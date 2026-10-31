@@ -10,7 +10,8 @@ export const TRANSITIONS: Record<CampaignStatus, readonly CampaignStatus[]> = {
   ready_for_approval: ['draft', 'planning', 'approved', 'cancelled'],
   approved: ['draft', 'ready_for_approval', 'sending', 'cancelled'],
   sending: ['sent', 'failed'],
-  sent: ['measuring'],
+  // A finished send with failed deliveries may be retried until outcomes are simulated.
+  sent: ['measuring', 'sending'],
   measuring: ['completed', 'failed'],
   completed: [],
   cancelled: [],

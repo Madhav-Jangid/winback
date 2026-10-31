@@ -1,5 +1,6 @@
 /**
  * Winback AI — Audit Service
+ * Append-only. Metadata holds no secrets, message text, or contact details.
  */
 
 import { getPool } from '@/lib/db/pool';
@@ -20,12 +21,14 @@ export type AuditEventType =
   | 'send_simulation_completed'
   | 'send_simulation_failed'
   | 'recipient_sent'
+  | 'recipient_delivered'
+  | 'recipient_failed'
   | 'recipient_suppressed'
   | 'opt_out_recorded'
   | 'outcome_simulation_completed'
   | 'demo_reset';
 
-export async function writeAuditEvent(params: {
+export interface AuditInput {
   merchant_id: string;
   campaign_id?: string | null;
   actor_type?: string;
@@ -34,20 +37,37 @@ export async function writeAuditEvent(params: {
   entity_type: string;
   entity_id: string;
   metadata?: Record<string, unknown>;
-}, db: Queryable = getPool()): Promise<void> {
-  await db.query(
-    `INSERT INTO audit_events 
-      (merchant_id, campaign_id, actor_type, actor_id, event_type, entity_type, entity_id, metadata)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-    [
-      params.merchant_id,
-      params.campaign_id ?? null,
-      params.actor_type ?? 'merchant',
-      params.actor_id ?? 'demo-merchant',
-      params.event_type,
-      params.entity_type,
-      params.entity_id,
-      JSON.stringify(params.metadata ?? {}),
-    ],
-  );
+}
+
+const COLUMNS = 8;
+
+const valuesOf = (e: AuditInput): unknown[] => [
+  e.merchant_id,
+  e.campaign_id ?? null,
+  e.actor_type ?? 'merchant',
+  e.actor_id ?? 'demo-merchant',
+  e.event_type,
+  e.entity_type,
+  e.entity_id,
+  JSON.stringify(e.metadata ?? {}),
+];
+
+export async function writeAuditEvent(params: AuditInput, db: Queryable = getPool()): Promise<void> {
+  await writeAuditEvents([params], db);
+}
+
+/** Write many events in one statement (one round trip), e.g. one per recipient of a send. */
+export async function writeAuditEvents(events: readonly AuditInput[], db: Queryable = getPool()): Promise<void> {
+  const CHUNK = 500;
+  for (let i = 0; i < events.length; i += CHUNK) {
+    const chunk = events.slice(i, i + CHUNK);
+    const placeholders = chunk
+      .map((_, row) => `(${Array.from({ length: COLUMNS }, (__, c) => `$${row * COLUMNS + c + 1}`).join(', ')})`)
+      .join(', ');
+    await db.query(
+      `INSERT INTO audit_events (merchant_id, campaign_id, actor_type, actor_id, event_type, entity_type, entity_id, metadata)
+       VALUES ${placeholders}`,
+      chunk.flatMap(valuesOf),
+    );
+  }
 }

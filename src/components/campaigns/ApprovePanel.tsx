@@ -44,6 +44,25 @@ export default function ApprovePanel({ campaignId, version, canApprove, blockerC
     }
   }
 
+  async function simulateSend() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/campaigns/${campaignId}/simulate-send`, { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok) {
+        setError(json.error?.message ?? 'Simulate send failed.');
+        return;
+      }
+      // Navigate to the send page so the merchant can watch progress
+      router.push(`/campaigns/${campaignId}/send`);
+    } catch {
+      setError('Network error. Nothing was sent. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (approval.state === 'approved') {
     return (
       <section className="success-box" aria-label="Approval status" style={{ flexDirection: 'column' }}>
@@ -52,8 +71,20 @@ export default function ApprovePanel({ campaignId, version, canApprove, blockerC
           By {approval.by} on {formatDate(approval.at, timezone)}. Fingerprint <code>{approval.hash?.slice(0, 12)}</code>. Editing the audience,
           offer, budget, limits, language, channel or any message cancels this approval.
         </span>
+        {error && <div className="error-box" role="alert" style={{ marginTop: '0.5rem' }}><span>{error}</span></div>}
         <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center', marginTop: '0.5rem' }}>
-          <button className="btn btn-success" disabled title="Simulated sending is the next build step">Simulate send (coming next)</button>
+          <button
+            id="btn-simulate-send"
+            className="btn btn-success"
+            onClick={simulateSend}
+            disabled={busy}
+            aria-busy={busy}
+          >
+            {busy ? 'Starting send…' : 'Simulate send'}
+          </button>
+          <Link href={`/campaigns/${campaignId}/send`} className="btn btn-secondary" id="btn-view-send-progress">
+            View send progress
+          </Link>
           <Link href={`/campaigns/${campaignId}`} className="btn btn-secondary">Back to campaign</Link>
         </div>
       </section>

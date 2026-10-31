@@ -26,39 +26,47 @@ export interface TestDatabase {
   /** Schema-scoped connection. Supports the app's own BEGIN/COMMIT/ROLLBACK calls. */
   db: Queryable;
   schema: string;
+  /** Open another independently scoped connection for concurrent integration tests. */
+  connect: () => Promise<{ db: Queryable; close: () => Promise<void> }>;
   cleanup: () => Promise<void>;
 }
 
 /** Wrap a client so every statement sees only `schema`, without touching session state. */
 function schemaScoped(client: Client, schema: string): Queryable {
   let inTransaction = false;
+  let queryQueue: Promise<void> = Promise.resolve();
   const setPath = `SET LOCAL search_path TO ${schema}`;
 
   return {
-    async query<R extends QueryResultRow = QueryResultRow>(text: string, values?: unknown[]): Promise<QueryResult<R>> {
-      const command = text.trim().toUpperCase();
-      if (command === 'BEGIN') {
-        // One round trip: the remote test database is far away.
-        await client.query(`BEGIN; ${setPath}`);
-        inTransaction = true;
-        return { command: 'BEGIN', rowCount: null, oid: 0, fields: [], rows: [] } as unknown as QueryResult<R>;
-      }
-      if (command === 'COMMIT' || command === 'ROLLBACK') {
-        inTransaction = false;
-        return client.query<R>(text);
-      }
-      if (inTransaction) return client.query<R>(text, values);
+    query<R extends QueryResultRow = QueryResultRow>(text: string, values?: unknown[]): Promise<QueryResult<R>> {
+      const run = async (): Promise<QueryResult<R>> => {
+        const command = text.trim().toUpperCase();
+        if (command === 'BEGIN') {
+          // One round trip: the remote test database is far away.
+          await client.query(`BEGIN; ${setPath}`);
+          inTransaction = true;
+          return { command: 'BEGIN', rowCount: null, oid: 0, fields: [], rows: [] } as unknown as QueryResult<R>;
+        }
+        if (command === 'COMMIT' || command === 'ROLLBACK') {
+          inTransaction = false;
+          return client.query<R>(text);
+        }
+        if (inTransaction) return client.query<R>(text, values);
 
-      // Standalone statement: give it its own transaction.
-      await client.query(`BEGIN; ${setPath}`);
-      try {
-        const result = await client.query<R>(text, values);
-        await client.query('COMMIT');
-        return result;
-      } catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
-      }
+        // Standalone statement: give it its own transaction.
+        await client.query(`BEGIN; ${setPath}`);
+        try {
+          const result = await client.query<R>(text, values);
+          await client.query('COMMIT');
+          return result;
+        } catch (error) {
+          await client.query('ROLLBACK');
+          throw error;
+        }
+      };
+      const result = queryQueue.then(run, run);
+      queryQueue = result.then(() => undefined, () => undefined);
+      return result;
     },
   };
 }
@@ -75,6 +83,11 @@ export async function createTestDatabase(): Promise<TestDatabase> {
   return {
     db,
     schema,
+    connect: async () => {
+      const connection = new Client(buildPgConfig(TEST_DATABASE_URL));
+      await connection.connect();
+      return { db: schemaScoped(connection, schema), close: () => connection.end() };
+    },
     cleanup: async () => {
       try {
         await client.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);

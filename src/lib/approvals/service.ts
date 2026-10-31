@@ -22,7 +22,7 @@ import {
   listRecipients, listSendCandidates, replaceRecipients, type RecipientFilter, type RecipientListItem, type RecipientRow,
 } from '@/lib/repositories/recipients';
 import type { SuppressionReason } from '@/types';
-import { assertCanSend, checkSendable } from './guard';
+import { assertCanSend, checkSendable, type SendIntent } from './guard';
 import { approvalHash } from './hash';
 
 export interface ApprovalBlocker { code: string; field?: string; message: string }
@@ -183,10 +183,12 @@ export interface Revalidation {
  * consent, opt-out, cooldown and cap across all campaigns, segment membership, and the budget.
  * It can only remove recipients, never add them, and it never includes a control customer.
  */
-export async function revalidateRecipients(db: Queryable, merchantId: string, campaignId: string, now: Date): Promise<Revalidation> {
+export async function revalidateRecipients(
+  db: Queryable, merchantId: string, campaignId: string, now: Date, intent: SendIntent = 'start',
+): Promise<Revalidation> {
   const campaign = await getCampaign(db, merchantId, campaignId);
   if (!campaign) throw notFound('Campaign');
-  assertCanSend(campaign);
+  assertCanSend(campaign, intent);
 
   const candidates = await listSendCandidates(db, campaignId);
   const directory = await getCustomerDirectory(

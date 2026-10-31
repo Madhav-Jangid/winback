@@ -4,7 +4,7 @@ Updated: 2026-10-31
 
 ## Current phase
 
-**Phase 7 — Consent, eligibility, and approval: complete (gate passed).** Next up: Phase 8.
+**Phase 8 — Simulated messaging: implementation, migration, tests, and build complete.**
 
 ## Phase 7 — Consent, eligibility, and approval
 
@@ -335,9 +335,27 @@ Tests covered: DM-01, DM-02, DM-03, FK/check/unique constraints, RLS, failed-res
 - Lint warnings left for their phases: unused `offerConfig` in `api/campaigns/[id]/plan/route.ts` (Phase 5), unused `withTransaction` import in `api/campaigns/[id]/route.ts` (Phase 4).
 - Git repository on `main`, pushed to https://github.com/Madhav-Jangid/winback.
 
+## Phase 8 — Simulated messaging
+
+- The simulate-send endpoint runs and resumes an idempotent simulated send after revalidating consent, opt-out, cooldown/cap, segment membership, budget, and current approval. Control customers are never messaged; delivery outcomes and retries are recorded and audited.
+- The review screen exposes the working Simulate send action. Screen F at `/campaigns/[id]/send` shows persisted send progress, send-time suppressions, failures, retries, budget, and control counts; it can poll while a send is active.
+- Integration coverage includes SE-01 to SE-08: completion, idempotency, retry, unique message rows, progress, send-time suppression, separate-connection concurrency, and resume after interruption.
+- Migration 006 was applied to the configured remote database after confirmation. Its ledger entry, added columns, and message/outcome constraints were verified.
+
+### Phase 8 verification
+
+| Command | Result |
+|---|---|
+| `npm test -- src/test/integration/messaging.test.ts` | PASS — 11 tests; migration applied only in a temporary schema, then cleaned up |
+| `npm test -- src/app/api/campaigns/[id]/simulate-send/route.test.ts` | PASS — 5 tests |
+| `npm run lint` | PASS — no warnings or errors |
+| `npm run typecheck` | PASS |
+| `npm run build` | PASS |
+| `npm run db:migrate` | PASS — applied `006_messaging_and_outcomes.sql`; verified ledger and schema |
+
 ## Next task
 
-Phase 8 — Simulated messaging: an idempotent send job behind `POST /api/campaigns/:id/simulate-send`. Start with `revalidateRecipients` (it already enforces the send gate and rechecks consent, opt-out, cooldown/cap, segment and budget; control customers are never candidates). Create one `campaign_messages` row per sendable customer with idempotency key `<campaign>:<customer>:v<version>` and `simulated_cost_minor` = the reserved cost per message; record send-time suppressions on `campaign_recipients` (keep the group, set `eligibility_status` to ineligible and the reason) and audit each recipient outcome; move the campaign approved → sending → sent; a retry processes only unresolved recipients; the review page's disabled "Simulate send" button and a progress view (processed, delivered, failed, suppressed, control not messaged) come with it. Replace the 501 in the route. Use `effectiveMessage()` for what customers receive. Tests SE-01 to SE-08 including concurrent requests and partial failure.
+Phase 9 — Results.
 
 ## Phase overview
 
@@ -351,4 +369,5 @@ Phase 8 — Simulated messaging: an idempotent send job behind `POST /api/campai
 | 5 — Gemini planner and fallback | Complete |
 | 6 — Sarvam localization | Complete |
 | 7 — Consent, eligibility, and approval | Complete |
-| 3–11 | Not started / existing artifacts unverified |
+| 8 — Simulated messaging | Complete |
+| 9–11 | Not started / existing artifacts unverified |

@@ -12,11 +12,24 @@ export type SendCheck =
   | { ok: true }
   | { ok: false; code: string; message: string; status: number };
 
+/**
+ * `start`: a new send, only from `approved`. `resume`: also continue an interrupted send
+ * (`sending`), retry after an interrupted job (`failed`), or retry failed deliveries (`sent`).
+ * Either way the approval must still match the campaign's current content.
+ */
+export type SendIntent = 'start' | 'resume';
+
 export function checkSendable(
   c: Pick<CampaignRecord, 'status' | 'version' | 'approved_version' | 'approval_hash'> & Partial<CampaignRecord>,
+  intent: SendIntent = 'start',
 ): SendCheck {
   switch (c.status) {
     case 'approved': break;
+    case 'sending':
+    case 'sent':
+    case 'failed':
+      if (intent === 'resume') break;
+      return { ok: false, code: 'CAMPAIGN_NOT_SENDABLE', message: `A ${c.status} campaign cannot start a new send.`, status: 409 };
     case 'cancelled':
       return { ok: false, code: 'CAMPAIGN_CANCELLED', message: 'This campaign was cancelled and cannot be sent.', status: 409 };
     case 'draft':
@@ -37,7 +50,7 @@ export function checkSendable(
   return { ok: true };
 }
 
-export function assertCanSend(c: CampaignRecord): void {
-  const check = checkSendable(c);
+export function assertCanSend(c: CampaignRecord, intent: SendIntent = 'start'): void {
+  const check = checkSendable(c, intent);
   if (!check.ok) throw new AppError(check.code, check.message, check.status);
 }

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { ArrowRight, LockKeyhole } from 'lucide-react';
 import { checkReadiness, type ReadinessIssue } from '@/lib/campaigns/readiness';
 import {
   CHANNEL_LABELS, CHANNEL_MESSAGE_LIMITS, CHANNELS, CONTROL_SHARE, LANGUAGES, LIMITS, OFFER_TYPE_LABELS, OFFER_TYPES,
@@ -307,7 +308,7 @@ export default function CampaignBuilder(props: CampaignBuilderProps) {
       )}
       {!editable && (
         <div className="info-box" style={{ marginBottom: '1rem' }}>
-          <span aria-hidden>🔒</span>
+          <LockKeyhole size={15} aria-hidden="true" />
           <span>This campaign is {status.replaceAll('_', ' ')} and can no longer be edited.</span>
         </div>
       )}
@@ -453,7 +454,7 @@ export default function CampaignBuilder(props: CampaignBuilderProps) {
             </button>
             {props.mode === 'edit' && props.campaignId && !dirty && (
               <Link href={`/campaigns/${props.campaignId}/review`} className="btn btn-success">
-                {status === 'approved' ? 'View approval' : 'Review and approve →'}
+                {status === 'approved' ? 'View approval' : <>Review and approve <ArrowRight size={15} aria-hidden="true" /></>}
               </Link>
             )}
             <Link href="/campaigns" className="btn btn-secondary">Back to campaigns</Link>

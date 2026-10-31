@@ -60,7 +60,13 @@ Open a saved campaign and choose **Review and approve** to see exactly what you 
 
 A customer is messaged only if they are in the segment, have consented, have not opted out, are outside the cooldown and under the message cap (counted across all campaigns), are in the treatment group, and the budget has room. The **cooldown** is the minimum gap since a customer's last message; the **cap** is the maximum messages in a rolling window of at least 30 days. Control customers are never messaged. Each message reserves the cost of one redemption, so the budget cannot be exceeded; if it covers only some customers they are served in a fixed order and the rest are listed as over budget.
 
-Consent is changed only in its own workflow: **Record opt-out** on a customer's page. It takes effect immediately, including for an already-approved campaign, and is audited. The send gate (`POST /api/campaigns/:id/simulate-send`) rejects anything that is not approved at its current content; the send itself arrives in the next build step.
+Consent is changed only in its own workflow: **Record opt-out** on a customer's page. It takes effect immediately, including for an already-approved campaign, and is audited. The send gate (`POST /api/campaigns/:id/simulate-send`) rejects anything that is not approved at its current content.
+
+### Results and audit
+
+After a simulated send completes, open **Results** from the send progress screen and choose **Simulate outcomes**. Outcome records are deterministic for the campaign version and demo seed. Treatment and control rates use their assigned-group denominators; estimated incremental rate is treatment rate minus control rate, and estimated incremental revenue multiplies the estimated incremental reactivations by the stored average simulated order value. Campaign cost sums persisted delivered-message costs. An unavailable denominator is shown as N/A.
+
+These are illustrative simulated results, not evidence of real-world lift. Simulated unsubscribes are stored as outcome data only and never update customer consent. The **Audit log** screen filters the append-only workflow events by campaign or action and omits customer identifiers and message content.
 
 ### Demo data and the demo clock
 

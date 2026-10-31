@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
+import { Megaphone, Plus } from 'lucide-react';
 import { DatabaseErrorState, EmptyState, LoadingState } from '@/components/ui/PageStates';
 import { CHANNEL_LABELS } from '@/lib/campaigns/rules';
 import { SEGMENTS } from '@/lib/campaigns/segments';
@@ -22,7 +23,7 @@ export default function CampaignsPage({ searchParams }: { searchParams: SearchPa
           <h1 className="page-title">Campaigns</h1>
           <p className="page-subtitle">Winback campaigns, from draft to measured results. Sending is simulated.</p>
         </div>
-        <Link href="/campaigns/new" className="btn btn-primary">＋ New campaign</Link>
+        <Link href="/campaigns/new" className="btn btn-primary"><Plus size={16} aria-hidden="true" />New campaign</Link>
       </div>
       <Suspense fallback={<LoadingState label="Loading campaigns…" />}>
         <CampaignList searchParams={searchParams} />
@@ -56,7 +57,7 @@ async function CampaignList({ searchParams }: { searchParams: SearchParams }) {
 
       {campaigns.length === 0 ? (
         <div className="card">
-          <EmptyState icon="📣" title="No campaigns here yet">
+          <EmptyState icon={<Megaphone size={28} strokeWidth={1.6} />} title="No campaigns here yet">
             <Link href="/campaigns/new">Create a winback campaign</Link> for your at-risk customers.
           </EmptyState>
         </div>

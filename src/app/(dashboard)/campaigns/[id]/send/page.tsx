@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ArrowLeft } from 'lucide-react';
 import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
 import { z } from 'zod';
@@ -50,8 +51,8 @@ async function SendView({ params }: { params: Params }) {
 
   return (
     <>
-      <Link href={`/campaigns/${id}/review`} className="form-help" style={{ textDecoration: 'none', display: 'inline-block', marginBottom: '1rem' }}>
-        ← Review &amp; approval
+      <Link href={`/campaigns/${id}/review`} className="back-link">
+        <ArrowLeft size={14} aria-hidden="true" /> Review &amp; approval
       </Link>
       <div className="page-header">
         <h1 className="page-title">Simulate send</h1>

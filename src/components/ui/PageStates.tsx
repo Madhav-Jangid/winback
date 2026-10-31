@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { AlertTriangle } from 'lucide-react';
 
 export function LoadingState({ label }: { label: string }) {
   return (
@@ -12,7 +13,7 @@ export function LoadingState({ label }: { label: string }) {
 export function DatabaseErrorState({ what }: { what: string }) {
   return (
     <div className="error-box" role="alert">
-      <span aria-hidden>⚠️</span>
+      <AlertTriangle size={18} aria-hidden="true" />
       <div>
         <strong>Couldn’t load {what}</strong>
         <p style={{ marginTop: '0.25rem', fontSize: '0.8rem' }}>
@@ -24,10 +25,10 @@ export function DatabaseErrorState({ what }: { what: string }) {
   );
 }
 
-export function EmptyState({ icon, title, children }: { icon: string; title: string; children?: ReactNode }) {
+export function EmptyState({ icon, title, children }: { icon?: ReactNode; title: string; children?: ReactNode }) {
   return (
     <div className="center-content" style={{ padding: '2.5rem' }}>
-      <span className="empty-icon" aria-hidden>{icon}</span>
+      {icon && <span className="empty-icon" aria-hidden="true">{icon}</span>}
       <p className="empty-title">{title}</p>
       {children && <div className="empty-desc">{children}</div>}
     </div>

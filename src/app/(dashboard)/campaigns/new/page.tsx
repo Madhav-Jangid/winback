@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { connection } from 'next/server';
 import { Suspense } from 'react';
+import { Layers3 } from 'lucide-react';
 import CampaignBuilder from '@/components/campaigns/CampaignBuilder';
 import { DatabaseErrorState, EmptyState, LoadingState } from '@/components/ui/PageStates';
 import type { CampaignDraft } from '@/lib/campaigns/schema';
@@ -33,7 +34,7 @@ async function NewCampaignForm() {
   }
   if (!merchant) {
     return (
-      <EmptyState icon="🗂️" title="No demo data loaded">
+      <EmptyState icon={<Layers3 size={28} strokeWidth={1.6} />} title="No demo data loaded">
         Run <code>npm run db:seed</code> or use <Link href="/">Reset demo data</Link> on the dashboard.
       </EmptyState>
     );

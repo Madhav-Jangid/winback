@@ -4,7 +4,7 @@ Updated: 2026-10-31
 
 ## Current phase
 
-**Phase 8 — Simulated messaging: implementation, migration, tests, and build complete.**
+**Phases 8–10 — Simulated messaging, outcomes, audit, and UI polish complete. Phase 11 regression and demo rehearsal remains.**
 
 ## Phase 7 — Consent, eligibility, and approval
 
@@ -295,7 +295,7 @@ Tests covered: DM-01, DM-02, DM-03, FK/check/unique constraints, RLS, failed-res
 
 ### Known issues
 
-- The dashboard's "Est. Incremental Revenue" still sums gross treatment revenue. Phase 9 must replace it with treatment-minus-control (PRD FR-11).
+- Resolved in Phase 9: the dashboard now reports treatment-minus-control incremental revenue rather than gross treatment revenue.
 - Supabase SSL does not verify the server certificate.
 
 ## Phase 1 — Skeleton and developer workflow (complete)
@@ -353,9 +353,35 @@ Tests covered: DM-01, DM-02, DM-03, FK/check/unique constraints, RLS, failed-res
 | `npm run build` | PASS |
 | `npm run db:migrate` | PASS — applied `006_messaging_and_outcomes.sql`; verified ledger and schema |
 
+## Phase 9 — Outcomes and results
+
+- Outcome generation is deterministic for the campaign version and seed, preserves the stored treatment/control assignment, and only generates treatment reactivations for delivered messages. Control customers are never messaged or assigned simulated unsubscribes.
+- Outcomes and completion audit are persisted in the same transaction. The campaign row is locked and duplicate simulations are idempotent.
+- Results reconcile against persisted groups and delivered-message costs. Treatment/control rates use their assigned group denominators; incremental rate is treatment minus control; incremental revenue uses the persisted average order value. Zero denominators are presented as unavailable rather than misleading zero rates.
+- The results view and dashboard label the estimates as simulated; the results view discloses assumptions and formulas. Dashboard incremental revenue is treatment-minus-control.
+- ME-01 to ME-10 coverage includes deterministic generation, denominators, rate and revenue formulas, zero denominators, idempotency, and the simulation caveat.
+
+## Phase 10 — Audit, reliability, and polish
+
+- Added a paginated, filterable audit screen and API. Event types are allowlisted; responses omit entity identifiers and personal message content.
+- Added explicit loading and database error states, and moved dynamic database reads behind Suspense for Next.js 16 Cache Components.
+- Refreshed the shared interface as a light-only merchant console with DM Sans / DM Serif Display typography, Lucide icons, responsive navigation, and consistent campaign, customer, results, and audit styling.
+- A security review of the Phase 9/10 changes reported no vulnerabilities.
+
+### Phase 9–10 verification
+
+| Command / check | Result |
+|---|---|
+| Focused results, audit, and outcome tests | PASS — 29 tests across 7 files |
+| `npm test -- src/test/integration/outcomes.test.ts` | PASS — 3 database integration tests in a temporary schema |
+| `npm run lint` | PASS — no warnings or errors |
+| `npm run typecheck` | PASS |
+| `npm run build` | PASS — audit and results routes prerender their static shells and stream database content |
+| Browser smoke test | PASS — dashboard, audit, and results render with configured database; audit and results work at 390px without horizontal overflow, and mobile navigation opens |
+
 ## Next task
 
-Phase 9 — Results.
+Phase 11 — Run the full regression suite and complete the clean-setup/demo rehearsal. Verify MT-01 through MT-20 and prepare the 3–5 minute demo runbook.
 
 ## Phase overview
 
@@ -370,4 +396,6 @@ Phase 9 — Results.
 | 6 — Sarvam localization | Complete |
 | 7 — Consent, eligibility, and approval | Complete |
 | 8 — Simulated messaging | Complete |
-| 9–11 | Not started / existing artifacts unverified |
+| 9 — Outcomes and results | Complete |
+| 10 — Audit, reliability, and polish | Complete |
+| 11 — Full regression and demo rehearsal | Not started |

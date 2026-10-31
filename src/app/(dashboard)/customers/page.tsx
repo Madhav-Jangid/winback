@@ -1,6 +1,7 @@
 import Form from 'next/form';
 import Link from 'next/link';
 import { Suspense } from 'react';
+import { FolderOpen, Search } from 'lucide-react';
 import { ContactBadge, RiskBadge } from '@/components/customers/badges';
 import { DatabaseErrorState, EmptyState, LoadingState } from '@/components/ui/PageStates';
 import { getAppNow } from '@/lib/clock';
@@ -70,7 +71,7 @@ async function CustomerDirectoryView({ searchParams }: { searchParams: SearchPar
 
   if (!directory.merchant) {
     return (
-      <EmptyState icon="🗂️" title="No demo data loaded">
+      <EmptyState icon={<FolderOpen size={28} strokeWidth={1.6} />} title="No demo data loaded">
         Run <code>npm run db:seed</code> or use <Link href="/">Reset demo data</Link> on the dashboard.
       </EmptyState>
     );
@@ -89,7 +90,7 @@ async function CustomerDirectoryView({ searchParams }: { searchParams: SearchPar
 
       <div className="filter-bar">
         <Form action="/customers" className="search-input-wrap" role="search">
-          <span className="search-icon" aria-hidden>🔍</span>
+          <Search className="search-icon" size={16} aria-hidden="true" />
           <input
             className="form-input"
             name="search"
@@ -119,7 +120,7 @@ async function CustomerDirectoryView({ searchParams }: { searchParams: SearchPar
 
       {customers.length === 0 ? (
         <div className="card">
-          <EmptyState icon="🔎" title="No customers match">
+          <EmptyState icon={<Search size={28} strokeWidth={1.6} />} title="No customers match">
             {query.search ? <>Nobody named “{query.search}” in this view. </> : null}
             <Link href="/customers">Show all customers</Link>
           </EmptyState>

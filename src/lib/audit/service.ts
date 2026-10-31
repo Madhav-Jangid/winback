@@ -5,28 +5,9 @@
 
 import { getPool } from '@/lib/db/pool';
 import type { Queryable } from '@/lib/db/types';
+import type { AUDIT_EVENT_TYPES } from './events';
 
-export type AuditEventType =
-  | 'campaign_created'
-  | 'campaign_updated'
-  | 'campaign_cancelled'
-  | 'plan_generated'
-  | 'plan_failed'
-  | 'translation_requested'
-  | 'translation_completed'
-  | 'translation_failed'
-  | 'approval_granted'
-  | 'approval_invalidated'
-  | 'send_simulation_started'
-  | 'send_simulation_completed'
-  | 'send_simulation_failed'
-  | 'recipient_sent'
-  | 'recipient_delivered'
-  | 'recipient_failed'
-  | 'recipient_suppressed'
-  | 'opt_out_recorded'
-  | 'outcome_simulation_completed'
-  | 'demo_reset';
+export type AuditEventType = (typeof AUDIT_EVENT_TYPES)[number];
 
 export interface AuditInput {
   merchant_id: string;

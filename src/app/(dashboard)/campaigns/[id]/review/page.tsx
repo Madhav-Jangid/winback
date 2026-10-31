@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ArrowLeft } from 'lucide-react';
 import { notFound } from 'next/navigation';
 import { Suspense, type ReactNode } from 'react';
 import { z } from 'zod';
@@ -60,8 +61,8 @@ async function Review({ params }: { params: Params }) {
 
   return (
     <>
-      <Link href={`/campaigns/${c.id}`} className="form-help" style={{ textDecoration: 'none', display: 'inline-block', marginBottom: '1rem' }}>
-        ← Back to editing
+      <Link href={`/campaigns/${c.id}`} className="back-link">
+        <ArrowLeft size={14} aria-hidden="true" /> Back to editing
       </Link>
       <div className="page-header">
         <h1 className="page-title">Review and approve</h1>

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ArrowLeft } from 'lucide-react';
 import { notFound } from 'next/navigation';
 import { Suspense, type ReactNode } from 'react';
 import { z } from 'zod';
@@ -17,8 +18,8 @@ type Params = Promise<{ id: string }>;
 export default function CustomerDetailPage({ params }: { params: Params }) {
   return (
     <div className="fade-in">
-      <Link href="/customers" className="form-help" style={{ textDecoration: 'none', display: 'inline-block', marginBottom: '1rem' }}>
-        ← All customers
+      <Link href="/customers" className="back-link">
+        <ArrowLeft size={14} aria-hidden="true" /> All customers
       </Link>
       <Suspense fallback={<LoadingState label="Loading customer…" />}>
         <CustomerDetailView params={params} />

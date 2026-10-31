@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ArrowLeft } from 'lucide-react';
 import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
 import { z } from 'zod';
@@ -15,8 +16,8 @@ type Params = Promise<{ id: string }>;
 export default function CampaignPage({ params }: { params: Params }) {
   return (
     <div className="fade-in">
-      <Link href="/campaigns" className="form-help" style={{ textDecoration: 'none', display: 'inline-block', marginBottom: '1rem' }}>
-        ← All campaigns
+      <Link href="/campaigns" className="back-link">
+        <ArrowLeft size={14} aria-hidden="true" /> All campaigns
       </Link>
       <Suspense fallback={<LoadingState label="Loading campaign…" />}>
         <CampaignEditor params={params} />

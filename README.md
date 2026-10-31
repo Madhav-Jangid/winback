@@ -96,3 +96,24 @@ See `.env.example` for supported values. Server configuration is parsed in `src/
 - Source of truth: [Winback AI MVP PRD](Winback_AI_MVP_PRD.md)
 - Implementation copy: [docs/PRD.md](docs/PRD.md)
 - Current phase, verification, and next task: [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md)
+
+## Product design
+
+Winback AI uses a light-only, nature-inspired palette designed for a calm, professional merchant workspace. The main interface uses DM Sans for readable UI text and DM Serif Display for headings, with Lucide icons.
+
+| Role | Color |
+|---|---|
+| Primary accent | `#28644D` |
+| Accent hover | `#1F503E` |
+| Main background | `#F5F6F2` |
+| Secondary background | `#EEF1ED` |
+| Card surface | `#FFFFFF` |
+| Primary text | `#202C26` |
+| Secondary text | `#53615A` |
+| Borders | `#DFE5DF` |
+| Success | `#237451` |
+| Warning | `#965518` |
+| Danger | `#A63D42` |
+| Information | `#3E6680` |
+
+Status colors are paired with text labels and are not the sole indicator of meaning. The product demo labels simulated data and outcomes explicitly.

@@ -9,6 +9,13 @@ function hostOf(connectionString: string): string {
 }
 
 /**
+ * Supabase's pooler reuses server sessions between client connections, so session settings
+ * such as search_path can leak in from a previous client (e.g. an integration test's temp
+ * schema). Run this first on every new connection to restore the database defaults.
+ */
+export const RESET_SESSION_SQL = 'RESET search_path';
+
+/**
  * Connection settings shared by the app pool, scripts, and integration tests.
  * Supabase connections are encrypted. The certificate is not verified (MVP limitation;
  * documented in the README), which still prevents passive eavesdropping.

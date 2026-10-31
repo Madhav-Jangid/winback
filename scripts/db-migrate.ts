@@ -1,7 +1,7 @@
 /** Apply pending migrations in supabase/migrations to DATABASE_URL. Usage: npm run db:migrate */
 import { loadEnvConfig } from '@next/env';
 import { Client } from 'pg';
-import { buildPgConfig } from '@/lib/db/config';
+import { buildPgConfig, RESET_SESSION_SQL } from '@/lib/db/config';
 import { runMigrations } from '@/lib/db/migrate';
 
 async function main() {
@@ -12,6 +12,7 @@ async function main() {
   const client = new Client(buildPgConfig(url));
   await client.connect();
   try {
+    await client.query(RESET_SESSION_SQL);
     const ran = await runMigrations(client);
     console.log(ran.length ? `Applied: ${ran.join(', ')}` : 'Database is up to date.');
   } finally {

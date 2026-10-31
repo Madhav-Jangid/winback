@@ -1,6 +1,6 @@
 import { Pool } from 'pg';
 import { getServerEnv } from '@/lib/env';
-import { buildPgConfig } from './config';
+import { buildPgConfig, RESET_SESSION_SQL } from './config';
 
 let pool: Pool | null = null;
 
@@ -14,6 +14,11 @@ export function getPool(): Pool {
       ...buildPgConfig(connectionString),
       max: 10,
       idleTimeoutMillis: 30000,
+    });
+
+    // pg queues queries per client, so this runs before any app query on the connection.
+    pool.on('connect', (client) => {
+      client.query(RESET_SESSION_SQL).catch((err) => console.error('Failed to reset DB session', err));
     });
 
     pool.on('error', (err) => {

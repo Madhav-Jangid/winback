@@ -5,7 +5,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Client, DatabaseError } from 'pg';
-import { buildPgConfig } from '@/lib/db/config';
+import { buildPgConfig, RESET_SESSION_SQL } from '@/lib/db/config';
 import { runMigrations } from '@/lib/db/migrate';
 import { DEMO_MERCHANT_ID, DEMO_REFERENCE_DATE } from '@/lib/demo/constants';
 import { resetDemoData } from '@/lib/demo/seed';
@@ -56,8 +56,27 @@ describe.skipIf(!DATABASE_URL)('database (integration)', () => {
 
   afterAll(async () => {
     if (!db) return;
-    await db.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
-    await db.end();
+    try {
+      await db.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+    } finally {
+      // The Supabase pooler hands this session to the next client, so never leave the temp
+      // schema on the search path (it broke the dev server once).
+      await db.query('RESET search_path');
+      await db.end();
+    }
+  });
+
+  it('leaves new connections on the default search_path', async () => {
+    // Regression: a fresh connection must not inherit this test's temp schema.
+    const other = new Client(buildPgConfig(DATABASE_URL!));
+    await other.connect();
+    try {
+      await other.query(RESET_SESSION_SQL);
+      const result = await other.query<{ t: string | null }>(`SELECT to_regclass('merchants')::text AS t`);
+      expect(result.rows[0].t).not.toContain(schema);
+    } finally {
+      await other.end();
+    }
   });
 
   it('records migrations and does not reapply them', async () => {

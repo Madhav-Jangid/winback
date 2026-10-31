@@ -1,7 +1,7 @@
 /** Reset the demo workspace to the known seed state. Usage: npm run db:seed */
 import { loadEnvConfig } from '@next/env';
 import { Client } from 'pg';
-import { buildPgConfig } from '@/lib/db/config';
+import { buildPgConfig, RESET_SESSION_SQL } from '@/lib/db/config';
 import { resetDemoData } from '@/lib/demo/seed';
 
 async function main() {
@@ -13,6 +13,7 @@ async function main() {
   const client = new Client(buildPgConfig(url));
   await client.connect();
   try {
+    await client.query(RESET_SESSION_SQL);
     const summary = await resetDemoData(client, 'seed-script');
     console.log('Demo data seeded:', summary);
   } finally {

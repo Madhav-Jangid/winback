@@ -13,6 +13,7 @@ import { campaignDraftSchema, fieldErrors, type CampaignDraft } from '@/lib/camp
 import { SEGMENT_TYPES, SEGMENTS, type SegmentPreview, type SegmentType } from '@/lib/campaigns/segments';
 import type { CampaignStatus } from '@/types';
 import type { CampaignPlanResult } from '@/lib/planner/types';
+import { frequencyWindowDays } from '@/lib/campaigns/rules';
 import type { TranslateResponse } from '@/lib/localization/types';
 import type { TranslationMeta } from '@/lib/localization/rules';
 import PlanPanel from './PlanPanel';
@@ -400,7 +401,7 @@ export default function CampaignBuilder(props: CampaignBuilderProps) {
               </Field>
             </div>
             <p className="form-help">
-              Limits apply across all campaigns: anyone messaged in the last {form.cooldown_days || '…'} days is skipped. The budget is never exceeded; it is enforced when sending.
+              Limits apply across all campaigns: anyone messaged in the last {form.cooldown_days || '…'} days is skipped, and nobody gets more than {form.frequency_cap || '…'} message(s) in {frequencyWindowDays(Number(form.cooldown_days) || 0)} days. The budget is never exceeded; it is enforced when sending.
             </p>
           </Section>
 
@@ -450,6 +451,11 @@ export default function CampaignBuilder(props: CampaignBuilderProps) {
             <button className="btn btn-primary" onClick={save} disabled={saving || (props.mode === 'edit' && !dirty)}>
               {saving ? 'Saving…' : props.mode === 'create' ? 'Create draft' : 'Save changes'}
             </button>
+            {props.mode === 'edit' && props.campaignId && !dirty && (
+              <Link href={`/campaigns/${props.campaignId}/review`} className="btn btn-success">
+                {status === 'approved' ? 'View approval' : 'Review and approve →'}
+              </Link>
+            )}
             <Link href="/campaigns" className="btn btn-secondary">Back to campaigns</Link>
             {props.mode === 'edit' && editable && !confirmCancel && (
               <button className="btn btn-danger" onClick={() => setConfirmCancel(true)}>Cancel campaign…</button>

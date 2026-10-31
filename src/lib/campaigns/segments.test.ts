@@ -32,9 +32,15 @@ describe('segment preview', () => {
     });
   });
 
-  it("uses the campaign's own cooldown: a 5-day cooldown no longer blocks customers messaged 10 days ago", () => {
-    const p = previewSegment(demoProfiles({ cooldown_days: 5, frequency_cap: 1 }), 'at_risk');
-    expect(p).toMatchObject({ eligible: 14, excluded: { frequency_cap: 0 } });
+  it('cooldown and cap are separate rules (FR-08): a short cooldown alone does not clear a customer at the cap', () => {
+    // Karan and Divya were messaged 10 days ago, which is inside the 30-day cap window.
+    expect(previewSegment(demoProfiles({ cooldown_days: 5, frequency_cap: 2 }), 'at_risk'))
+      .toMatchObject({ eligible: 14, excluded: { frequency_cap: 0 } });
+    expect(previewSegment(demoProfiles({ cooldown_days: 5, frequency_cap: 1 }), 'at_risk'))
+      .toMatchObject({ eligible: 12, excluded: { frequency_cap: 2 } });
+    // A long cooldown blocks them whatever the cap is.
+    expect(previewSegment(demoProfiles({ cooldown_days: 30, frequency_cap: 5 }), 'at_risk'))
+      .toMatchObject({ eligible: 12, excluded: { frequency_cap: 2 } });
   });
 
   it('splits treatment and control: estimated without a campaign, exact with one', () => {

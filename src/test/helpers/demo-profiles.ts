@@ -1,4 +1,5 @@
 /** Customer profiles for the full demo dataset, built in memory (no database). */
+import { frequencyWindowDays } from '@/lib/campaigns/rules';
 import { buildCustomerProfile, type ContactPolicy, type CustomerProfile } from '@/lib/customers/service';
 import { DEMO_REFERENCE_DATE } from '@/lib/demo/constants';
 import { buildDemoDataset } from '@/lib/demo/seed-data';
@@ -10,7 +11,7 @@ export function demoProfiles(
   now: Date = DEMO_REFERENCE_DATE,
 ): CustomerProfile[] {
   const data = buildDemoDataset();
-  const windowStart = now.getTime() - policy.cooldown_days * DAY_MS;
+  const windowStart = now.getTime() - frequencyWindowDays(policy.cooldown_days) * DAY_MS;
   return data.customers.map((c) => {
     const messages = data.messages.filter((m) => m.customer_id === c.id);
     const last = messages.map((m) => m.sent_at.getTime()).sort((a, b) => b - a)[0];

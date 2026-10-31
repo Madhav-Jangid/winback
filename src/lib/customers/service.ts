@@ -4,6 +4,7 @@
  * customer can still be lapsing, but must never be messaged.
  */
 import { z } from 'zod';
+import { frequencyWindowDays } from '@/lib/campaigns/rules';
 import type { Queryable } from '@/lib/db/types';
 import { checkEligibility, type EligibilityResult } from '@/lib/eligibility/service';
 import { assessRisk } from '@/lib/risk/engine';
@@ -111,7 +112,7 @@ function policyOf(merchant: MerchantSettings): ContactPolicy {
   return { cooldown_days: merchant.default_cooldown_days, frequency_cap: merchant.default_frequency_cap };
 }
 
-const windowStart = (now: Date, policy: ContactPolicy) => new Date(now.getTime() - policy.cooldown_days * DAY_MS);
+const windowStart = (now: Date, policy: ContactPolicy) => new Date(now.getTime() - frequencyWindowDays(policy.cooldown_days) * DAY_MS);
 
 export interface CustomerDirectory {
   merchant: MerchantSettings | null;
@@ -135,6 +136,7 @@ export async function getCustomerDirectory(
   now: Date,
   query: CustomerQuery = { filter: 'all', search: '' },
   policyOverride?: ContactPolicy,
+  options: { excludeCampaignId?: string } = {},
 ): Promise<CustomerDirectory> {
   const merchant = await getMerchantSettings(db, merchantId);
   if (!merchant) {
@@ -143,7 +145,7 @@ export async function getCustomerDirectory(
   const policy = policyOverride ?? policyOf(merchant);
   const [customers, stats] = await Promise.all([
     listCustomersWithPurchases(db, merchantId),
-    getMessageStatsByCustomer(db, merchantId, windowStart(now, policy)),
+    getMessageStatsByCustomer(db, merchantId, windowStart(now, policy), undefined, options.excludeCampaignId),
   ]);
   const all = customers.map((c) => buildCustomerProfile(c, stats.get(c.id), now, policy));
   return { merchant, policy, as_of: now.toISOString(), counts: countByFilter(all), customers: applyQuery(all, query), all };

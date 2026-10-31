@@ -30,6 +30,8 @@ export interface CampaignRecord {
   approved_version: number | null;
   approved_by: string | null;
   approved_at: string | null;
+  /** Hash of the material fields approved; null until approved. */
+  approval_hash: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -47,7 +49,7 @@ type Row = Omit<CampaignRecord, 'segment_type' | 'offer' | 'budget_minor' | 'app
 
 const COLUMNS = `id, merchant_id, name, goal, segment_snapshot, offer_config, budget_minor, frequency_cap, cooldown_days,
   language, channel, original_message, localized_message, translation_meta, plan_rationale, plan_source,
-  status, version, approved_version, approved_by, approved_at, created_at, updated_at`;
+  status, version, approved_version, approved_by, approved_at, approval_hash, created_at, updated_at`;
 
 function toRecord(row: Row): CampaignRecord {
   const { offer_config, segment_snapshot, translation_meta, ...rest } = row;
@@ -135,12 +137,28 @@ export async function updateCampaignRow(
        approved_version = CASE WHEN $18 THEN NULL ELSE approved_version END,
        approved_by = CASE WHEN $18 THEN NULL ELSE approved_by END,
        approved_at = CASE WHEN $18 THEN NULL ELSE approved_at END,
+       approval_hash = CASE WHEN $18 THEN NULL ELSE approval_hash END,
        updated_at = NOW()
      WHERE merchant_id = $1 AND id = $2`,
     [merchantId, id, c.name, c.goal, JSON.stringify(c.segment_snapshot), JSON.stringify(c.offer), c.budget_minor,
       c.frequency_cap, c.cooldown_days, c.language, c.channel, c.original_message, c.localized_message || null,
       c.translation ? JSON.stringify(c.translation) : null, c.translation?.source ?? null,
       c.status, c.version, c.clear_approval],
+  );
+}
+
+/** Record an approval of the campaign's current version. */
+export async function setApproval(
+  db: Queryable,
+  merchantId: string,
+  id: string,
+  approval: { approved_version: number; approved_by: string; approval_hash: string },
+): Promise<void> {
+  await db.query(
+    `UPDATE campaigns SET status = 'approved', approved_version = $3, approved_by = $4, approved_at = NOW(),
+       approval_hash = $5, updated_at = NOW()
+     WHERE merchant_id = $1 AND id = $2`,
+    [merchantId, id, approval.approved_version, approval.approved_by, approval.approval_hash],
   );
 }
 

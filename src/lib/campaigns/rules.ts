@@ -56,6 +56,14 @@ export const LIMITS = {
 /** Share of eligible customers held back as the control group (never messaged). */
 export const CONTROL_SHARE = 0.2;
 
+/**
+ * Two separate frequency rules. Cooldown: a minimum gap since a customer's last message (any
+ * campaign). Cap: at most N messages in a rolling window, never shorter than 30 days or the
+ * cooldown. They only differ when the cap is above 1.
+ */
+export const FREQUENCY_WINDOW_DAYS = 30;
+export const frequencyWindowDays = (cooldownDays: number): number => Math.max(FREQUENCY_WINDOW_DAYS, cooldownDays);
+
 export const OFFER_TYPES = ['percentage_discount', 'fixed_discount', 'free_item', 'no_offer'] as const;
 export type OfferType = (typeof OFFER_TYPES)[number];
 

@@ -54,6 +54,14 @@ For a non-English campaign, **Translate** on a saved campaign calls Sarvam (`POS
 
 Without `SARVAM_API_KEY` the demo fallback does **not** translate: it returns the English text labelled as demo output, which must be reviewed before approval. If Sarvam fails, nothing is saved and you can retry, type the translation yourself, or choose the labelled demo draft.
 
+### Approval, consent and eligibility
+
+Open a saved campaign and choose **Review and approve** to see exactly what you would authorise: who is messaged, who is held back as the control group, who is suppressed and why, the budget reserved, and both language versions of the message. **Approve** is tied to the exact version you reviewed. The server recomputes readiness, eligibility, the control split and the budget; nothing the browser sends is trusted. Any later change to the audience, offer, budget, limits, language, channel or message cancels the approval and discards the stored recipient list.
+
+A customer is messaged only if they are in the segment, have consented, have not opted out, are outside the cooldown and under the message cap (counted across all campaigns), are in the treatment group, and the budget has room. The **cooldown** is the minimum gap since a customer's last message; the **cap** is the maximum messages in a rolling window of at least 30 days. Control customers are never messaged. Each message reserves the cost of one redemption, so the budget cannot be exceeded; if it covers only some customers they are served in a fixed order and the rest are listed as over budget.
+
+Consent is changed only in its own workflow: **Record opt-out** on a customer's page. It takes effect immediately, including for an already-approved campaign, and is audited. The send gate (`POST /api/campaigns/:id/simulate-send`) rejects anything that is not approved at its current content; the send itself arrives in the next build step.
+
 ### Demo data and the demo clock
 
 The seed (`src/lib/demo/seed-data.ts`) is a fictional café with 31 synthetic customers covering at-risk, healthy, insufficient-history, opted-out, unknown/revoked consent, frequency-capped, refunded, cancelled, and duplicate-timestamp cases. Purchase dates are relative to a fixed demo date, **1 Oct 2026**, and in demo mode risk is calculated as of that date, so the demo gives the same results whenever it is run.

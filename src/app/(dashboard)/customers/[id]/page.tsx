@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { Suspense, type ReactNode } from 'react';
 import { z } from 'zod';
 import { ContactBadge, RiskBadge } from '@/components/customers/badges';
+import OptOutButton from '@/components/customers/OptOutButton';
 import { DatabaseErrorState, LoadingState } from '@/components/ui/PageStates';
 import { getAppNow } from '@/lib/clock';
 import { getCustomerDetail, type CustomerDetail } from '@/lib/customers/service';
@@ -89,6 +90,11 @@ async function CustomerDetailView({ params }: { params: Params }) {
           <Row label="Opted out">{profile.opted_out_at ? formatDate(profile.opted_out_at, tz) : 'No'}</Row>
           <Row label="Last campaign message">{formatDate(profile.last_message_at, tz)}</Row>
           <Row label="Reason code"><code>{profile.contact.reason ?? 'ELIGIBLE'}</code></Row>
+          {!profile.opted_out_at && (
+            <div style={{ marginTop: '0.75rem' }}>
+              <OptOutButton customerId={profile.id} name={profile.display_name} />
+            </div>
+          )}
           <p className="form-help" style={{ marginTop: '0.75rem' }}>
             Uses the merchant defaults: at most {policy.frequency_cap} message per {policy.cooldown_days} days across all campaigns.
             Eligibility is checked again when a campaign is approved and when it is sent. Consent can’t be changed from campaign screens.

@@ -6,6 +6,7 @@ import type { z } from 'zod';
 import { writeAuditEvent } from '@/lib/audit/service';
 import { getCustomerDirectory, type ContactPolicy } from '@/lib/customers/service';
 import { inTransaction } from '@/lib/db/transaction';
+import { deleteRecipients } from '@/lib/repositories/recipients';
 import type { Queryable } from '@/lib/db/types';
 import { AppError, notFound } from '@/lib/errors';
 import { assignGroup } from '@/lib/experiments/assignment';
@@ -53,7 +54,7 @@ export async function previewSegmentFor(
   policy: ContactPolicy,
   campaignId?: string,
 ): Promise<{ preview: SegmentPreview; currency: string }> {
-  const directory = await getCustomerDirectory(db, merchantId, now, undefined, policy);
+  const directory = await getCustomerDirectory(db, merchantId, now, undefined, policy, { excludeCampaignId: campaignId });
   if (!directory.merchant) throw new AppError('MERCHANT_NOT_FOUND', 'Demo data is not loaded. Run npm run db:seed.', 409);
   const assign = campaignId ? (customerId: string) => assignGroup(campaignId, customerId) : undefined;
   return { preview: previewSegment(directory.all, segmentType, assign), currency: directory.merchant.currency };
@@ -83,9 +84,8 @@ async function evaluate(
   return { preview, currency, readiness: checkReadiness({ ...draft, translation }, preview, currency) };
 }
 
-export async function getCampaignView(db: Queryable, merchantId: string, id: string, now: Date): Promise<CampaignView> {
-  const campaign = await getCampaign(db, merchantId, id);
-  if (!campaign) throw notFound('Campaign');
+/** The campaign with its live audience preview and readiness. `campaign` must belong to `merchantId`. */
+export async function viewOf(db: Queryable, merchantId: string, campaign: CampaignRecord, now: Date): Promise<CampaignView> {
   const { preview, currency, readiness } = await evaluate(db, merchantId, now, toDraft(campaign), campaign.id, campaign.translation);
   return {
     campaign,
@@ -97,6 +97,12 @@ export async function getCampaignView(db: Queryable, merchantId: string, id: str
     cost_per_redemption_minor: offerCostPerRedemptionMinor(campaign.offer, preview.avg_order_value_minor),
     currency,
   };
+}
+
+export async function getCampaignView(db: Queryable, merchantId: string, id: string, now: Date): Promise<CampaignView> {
+  const campaign = await getCampaign(db, merchantId, id);
+  if (!campaign) throw notFound('Campaign');
+  return viewOf(db, merchantId, campaign, now);
 }
 
 /** db must be a single connection (Client/PoolClient): the write and its audit event share a transaction. */
@@ -152,6 +158,7 @@ export async function updateCampaign(
     await updateCampaignRow(db, merchantId, id, {
       ...after, translation, segment_snapshot: snapshotOf(after, preview, now), status, version, clear_approval: clearApproval,
     });
+    if (clearApproval) await deleteRecipients(db, id); // the recipient snapshot belonged to the approval
     await writeAuditEvent({
       merchant_id: merchantId, campaign_id: id, actor_id: actorId, event_type: 'campaign_updated',
       entity_type: 'campaign', entity_id: id,
@@ -199,6 +206,7 @@ export async function applyTranslation(
     await updateCampaignRow(db, merchantId, id, {
       ...after, translation: input.meta, segment_snapshot: snapshotOf(after, preview, now), status, version, clear_approval: clearApproval,
     });
+    if (clearApproval) await deleteRecipients(db, id);
     await writeAuditEvent({
       merchant_id: merchantId, campaign_id: id, actor_id: actorId, event_type: 'translation_completed',
       entity_type: 'campaign', entity_id: id,

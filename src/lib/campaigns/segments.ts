@@ -30,7 +30,8 @@ export const SEGMENTS: Record<SegmentType, { label: string; description: string;
   },
 };
 
-function inSegment(profile: CustomerProfile, type: SegmentType): boolean {
+/** Whether a customer matches the segment's audience rule (before consent and frequency checks). */
+export function isSegmentMember(profile: CustomerProfile, type: SegmentType): boolean {
   switch (type) {
     case 'at_risk': return profile.risk.status === 'at_risk';
     case 'previously_active': return profile.risk.status === 'at_risk' && profile.completed_purchase_count >= REGULAR_MIN_PURCHASES;
@@ -96,7 +97,7 @@ export function previewSegment(
       excluded.insufficient_history += 1;
       continue;
     }
-    if (!inSegment(profile, type)) continue;
+    if (!isSegmentMember(profile, type)) continue;
     matched += 1;
     const reason = exclusionOf(profile);
     if (reason) excluded[reason] += 1;

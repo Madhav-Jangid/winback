@@ -4,7 +4,60 @@ Updated: 2026-10-31
 
 ## Current phase
 
-**Phase 6 — Sarvam localization: complete (gate passed).** Next up: Phase 7.
+**Phase 7 — Consent, eligibility, and approval: complete (gate passed).** Next up: Phase 8.
+
+## Phase 7 — Consent, eligibility, and approval
+
+### Decisions
+
+- **Approval is bound to one exact version and a hash.** `POST /api/campaigns/:id/approve` takes `expected_version` (the version the merchant reviewed); a different current version is `409 VERSION_CONFLICT`. The server recomputes readiness, eligibility, the control split and the budget inside the approval transaction (row locked), requires no blockers, stores the recipient snapshot, and records `approved_version`, `approved_by`, `approved_at` and `approval_hash`. Repeating an approval for an already-approved current version is a no-op (one audit event).
+- **The hash** (`src/lib/approvals/hash.ts`, migration 004 `campaigns.approval_hash`) covers version, segment, offer, budget, frequency cap, cooldown, language, channel, English and localized messages, and translation provenance (source, model, language, source text, edited). Name, goal, plan notes and timestamps are excluded. The send gate recomputes it, so a change that skipped the version bump (for example directly in the database) still cannot be sent.
+- **The send gate** (`src/lib/approvals/guard.ts`): draft, planning and ready-for-approval → `CAMPAIGN_APPROVAL_REQUIRED`; cancelled → `CAMPAIGN_CANCELLED`; approved for an older version or with a different hash → `CAMPAIGN_APPROVAL_STALE`; already sending/sent/finished → `CAMPAIGN_NOT_SENDABLE`. `POST /api/campaigns/:id/simulate-send` was rewritten to enforce it and returns **501 `SEND_NOT_IMPLEMENTED`** for a campaign that passes, writing nothing. The send job is Phase 8. The old route and the old approve route (hard-coded ₹5 offer cost, no frequency history, approval of drafts, no readiness check) were replaced.
+- **Recipient snapshot** (`campaign_recipients`, migration 004). `group_assignment` NULL means outside the experiment (suppressed before assignment, with a reason); `treatment` / `control` are the experiment; `suppression_reason` is why someone is *not* messaged, NULL meaning they will be. Database constraints enforce: a control customer always carries `CONTROL_GROUP`; anyone outside the experiment must have a reason; reason codes and groups are validated; one row per customer. The snapshot is deleted when the approval is invalidated.
+- **Order of decisions** (`src/lib/eligibility/recipients.ts`): segment membership → contactability (consent, opt-out, cooldown/cap) → stable-hash treatment/control among the contactable → budget over treatment in customer-id order. Experiment groups are therefore drawn only from customers who could be messaged.
+- **Budget policy (E-09):** each message reserves one redemption's cost; at most `floor(budget / cost)` customers are messaged, in a fixed order (by id), the rest are `BUDGET_EXCEEDED` and listed. A zero-cost offer is unlimited.
+- **Cooldown and cap are now separate rules** (previously the cap above 1 had no effect because the cooldown window also served as the cap window). Cooldown: minimum days since the last message. Cap: at most N messages in a rolling `max(30, cooldown)`-day window. Messages from the campaign itself are excluded from its own check so a retry does not block itself.
+- **Send-time revalidation** (`revalidateRecipients`): enforces the gate, then rechecks every customer the approval chose to message against current data (consent, opt-out, cooldown/cap across all campaigns, segment membership, budget). It can only remove recipients, never add, and never includes control customers (EL-09, E-05, E-06, E-08). Phase 8 calls it.
+- **Consent is its own workflow** (E-35): `POST /api/customers/:id/opt-out` and a confirm-first button on the customer page. Immediate, idempotent, audited (`opt_out_recorded`), merchant-scoped; it does not change `consent_status`.
+
+### Bug found by the tests and fixed (migration 005)
+
+The database rule "a control customer must carry `CONTROL_GROUP`" was written as `... OR suppression_reason = 'CONTROL_GROUP'`. For a control row with no reason that is `NULL = 'CONTROL_GROUP'`, which is unknown, and a CHECK accepts unknown, so a control customer with no reason (which reads as "will be messaged") was allowed. Migration 005 re-creates it with `IS NOT DISTINCT FROM`. Migration 004 was already applied, so the fix is a new migration rather than an edit.
+
+### Acceptance criteria
+
+- [x] Eligibility service and suppression reason codes shared by backend and UI (`src/lib/eligibility/{service,recipients,reasons}.ts`).
+- [x] Approval summary screen `/campaigns/[id]/review`: audience and control counts, suppression by reason with a who-is-not-messaged list, offer, budget and cost assumptions, exact English and localized copy with provenance badges, channel, language, "Simulation only", blockers and warnings.
+- [x] Version/hash-bound approval, audited; edits invalidate it.
+- [x] `GET /api/campaigns/:id/recipients` lists the stored snapshot with reasons (EL-10).
+- [x] No unapproved, stale, cancelled or ineligible send can pass server validation.
+- [x] EL-01 to EL-10 and CA-01 to CA-08 pass.
+
+### Files
+
+- New: `supabase/migrations/004_approval_and_recipients.sql`, `src/lib/approvals/{hash,guard,service}.ts`, `src/lib/eligibility/{reasons,recipients}.ts`, `src/lib/customers/consent.ts`, `src/lib/repositories/recipients.ts`, `src/components/campaigns/ApprovePanel.tsx`, `src/components/customers/OptOutButton.tsx`, `src/app/(dashboard)/campaigns/[id]/review/page.tsx`, routes `campaigns/[id]/recipients` and `customers/[id]/opt-out`, and tests (`eligibility/service`, `eligibility/recipients`, `approvals/guard`, four route tests, `test/integration/approvals`, `test/fixtures/campaign-record`)
+- Rewritten: `src/app/api/campaigns/[id]/approve/route.ts`, `src/app/api/campaigns/[id]/simulate-send/route.ts`
+- Changed: `src/lib/campaigns/{service,rules,segments}.ts` (`viewOf`, cooldown/cap window, recipient snapshot cleanup on invalidation, `isSegmentMember`), `src/lib/customers/service.ts` and `src/lib/repositories/{customers,campaigns}.ts` (cap window, exclude own messages, `approval_hash`), campaign builder (review link, limits text), customer page, `src/test/helpers/demo-profiles.ts`, `README.md`
+
+### Verification (2026-10-31)
+
+| Command | Result |
+|---|---|
+| `npm test` | PASS — 33 files, 328 tests (the full run takes about 6 minutes against the remote database; the approval integration file alone takes about 5) |
+| `npm run lint` / `typecheck` / `build` | PASS (0 errors, 0 warnings) |
+| `npm run db:migrate` | Applied `004_approval_and_recipients.sql` to Supabase (the seeded historical recipients satisfied the new constraints) |
+| **Live app** (`next start`, real database) | Before approval `simulate-send` → 409 `CAMPAIGN_APPROVAL_REQUIRED`; wrong version → 409 `VERSION_CONFLICT`; body without `expected_version` → 400; approve → approved v1 with fingerprint; audience 19 / contactable 12 / treatment 9 / control 3; reserved ₹379.17 of ₹5,000 (₹42.13 each); repeat approve → no-op; after approval `simulate-send` → 501; `recipients?reason=FREQUENCY_CAP` → Divya Menon, Karan Malhotra; editing the budget → v2, `ready_for_approval`, approval and hash cleared, snapshot empty (total 0) |
+| Headless Edge screenshots | Review page renders unapproved (Approve version 2) and approved (version, approver, fingerprint, disabled "Simulate send") |
+
+### Known issues
+
+- The Approve and Record opt-out buttons were not clicked through in a browser; the API behind them and the rendered pages were verified.
+- The approval summary recomputes eligibility on every page load, so the numbers before approval can shift between loads if data changes.
+- Budget reservation is conservative (everyone is assumed to redeem), so unused budget stays unreserved.
+- Per-recipient suppression and send audit events arrive with the send job (Phase 8). Approval itself stores aggregate counts in its audit event.
+- Changing the cap/cooldown meaning affects the customers screen label "Recently messaged" only through the shared rule; its explanatory text still says "in the last N days".
+
+
 
 ## Phase 6 — Sarvam localization
 
@@ -284,7 +337,7 @@ Tests covered: DM-01, DM-02, DM-03, FK/check/unique constraints, RLS, failed-res
 
 ## Next task
 
-Phase 7 — Consent, eligibility, and approval: an approval summary screen (segment and treatment/control counts, offer and budget, English and localized copy with provider badges, channel, suppression counts by reason, cost assumptions, "Simulation only"); `POST /api/campaigns/:id/approve` rewritten on the campaign service to bind approval to the exact version (and a hash of every material field including `localized_message` and its provenance), require an empty readiness list, recompute eligibility server-side, and audit it; the same eligibility service reused by the send path. Tests EL-01 to EL-10 and CA-01 to CA-08. Use `effectiveMessage()` for what customers receive. The old `approve` and `simulate-send` routes are still the original rough versions.
+Phase 8 — Simulated messaging: an idempotent send job behind `POST /api/campaigns/:id/simulate-send`. Start with `revalidateRecipients` (it already enforces the send gate and rechecks consent, opt-out, cooldown/cap, segment and budget; control customers are never candidates). Create one `campaign_messages` row per sendable customer with idempotency key `<campaign>:<customer>:v<version>` and `simulated_cost_minor` = the reserved cost per message; record send-time suppressions on `campaign_recipients` (keep the group, set `eligibility_status` to ineligible and the reason) and audit each recipient outcome; move the campaign approved → sending → sent; a retry processes only unresolved recipients; the review page's disabled "Simulate send" button and a progress view (processed, delivered, failed, suppressed, control not messaged) come with it. Replace the 501 in the route. Use `effectiveMessage()` for what customers receive. Tests SE-01 to SE-08 including concurrent requests and partial failure.
 
 ## Phase overview
 
@@ -297,4 +350,5 @@ Phase 7 — Consent, eligibility, and approval: an approval summary screen (segm
 | 4 — Campaign draft and validation | Complete |
 | 5 — Gemini planner and fallback | Complete |
 | 6 — Sarvam localization | Complete |
+| 7 — Consent, eligibility, and approval | Complete |
 | 3–11 | Not started / existing artifacts unverified |

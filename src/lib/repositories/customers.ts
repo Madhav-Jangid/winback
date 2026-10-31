@@ -107,6 +107,8 @@ export async function getMessageStatsByCustomer(
   merchantId: string,
   windowStart: Date,
   customerId?: string,
+  /** Leave out one campaign's own messages (it must not count against itself when it is retried). */
+  excludeCampaignId?: string,
 ): Promise<Map<string, MessageStats>> {
   const result = await db.query<{ customer_id: string; last_sent_at: Date; count_in_window: string }>(
     `SELECT m.customer_id, MAX(m.sent_at) AS last_sent_at,
@@ -114,8 +116,9 @@ export async function getMessageStatsByCustomer(
        FROM campaign_messages m JOIN campaigns c ON c.id = m.campaign_id
       WHERE c.merchant_id = $1 AND m.sent_at IS NOT NULL AND m.status <> 'failed'
         AND ($3::uuid IS NULL OR m.customer_id = $3::uuid)
+        AND ($4::uuid IS NULL OR m.campaign_id <> $4::uuid)
       GROUP BY m.customer_id`,
-    [merchantId, windowStart, customerId ?? null],
+    [merchantId, windowStart, customerId ?? null, excludeCampaignId ?? null],
   );
   return new Map(result.rows.map((r) => [
     r.customer_id,

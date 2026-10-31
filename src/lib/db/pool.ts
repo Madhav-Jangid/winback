@@ -1,5 +1,6 @@
 import { Pool } from 'pg';
 import { getServerEnv } from '@/lib/env';
+import { buildPgConfig } from './config';
 
 let pool: Pool | null = null;
 
@@ -10,10 +11,9 @@ export function getPool(): Pool {
       throw new Error('DATABASE_URL environment variable is not set');
     }
     pool = new Pool({
-      connectionString,
+      ...buildPgConfig(connectionString),
       max: 10,
       idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 5000,
     });
 
     pool.on('error', (err) => {

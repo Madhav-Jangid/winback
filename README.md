@@ -6,21 +6,45 @@ Winback AI is a local demo workspace for finding customers who may be lapsing, p
 
 - Node.js 20 or newer
 - npm
-- PostgreSQL for database-backed customer and campaign workflows (Phase 2 setup)
+- A PostgreSQL database. The project uses Supabase; any PostgreSQL 15+ works.
 
-The dashboard shell can start without PostgreSQL or AI provider credentials. Database-backed pages and actions require a configured database.
+The app shell starts without a database or AI provider keys. Database-backed pages show a setup error until `DATABASE_URL` is configured.
 
 ## Local setup
 
 ```powershell
 npm install
-Copy-Item .env.example .env.local
+Copy-Item .env.example .env.local   # then fill in DATABASE_URL
+npm run db:setup                    # apply migrations + load demo data
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Keep provider keys server-side; never use a `NEXT_PUBLIC_` prefix for them. `DATABASE_URL` may be left empty to inspect the app shell, but database features will show a connection/setup error until PostgreSQL is configured.
+Open [http://localhost:3000](http://localhost:3000).
 
-The current schema and seed files are in `supabase/migrations/` and `supabase/seed.ts`. Database setup and repeatable seed/reset are tracked as Phase 2 work in `docs/IMPLEMENTATION_STATUS.md`.
+### Supabase connection
+
+Use the **Session pooler** URI from the Supabase dashboard (Connect → Session pooler), e.g.
+`postgresql://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres`.
+The direct `db.<project-ref>.supabase.co` host is IPv6-only and fails on most home networks with `ENOTFOUND`.
+Connections to Supabase use SSL without certificate verification (MVP limitation).
+
+The app talks to Postgres only from the server. Row-level security is enabled on every table with no policies, so Supabase's REST API (and the publishable key) cannot read or write app data.
+
+### Database commands
+
+| Command | What it does |
+|---|---|
+| `npm run db:migrate` | Applies new files in `supabase/migrations/` (tracked in `schema_migrations`). |
+| `npm run db:seed` | Deletes and recreates the demo workspace in one transaction. Safe to repeat. Requires `DEMO_MODE=true`. |
+| `npm run db:setup` | Both of the above. |
+
+The dashboard's **Reset demo data** link does the same as `db:seed`.
+
+### Demo data and the demo clock
+
+The seed (`src/lib/demo/seed-data.ts`) is a fictional café with 31 synthetic customers covering at-risk, healthy, insufficient-history, opted-out, unknown/revoked consent, frequency-capped, refunded, cancelled, and duplicate-timestamp cases. Purchase dates are relative to a fixed demo date, **1 Oct 2026**, and in demo mode risk is calculated as of that date, so the demo gives the same results whenever it is run.
+
+Authentication is not implemented: this is a single-merchant local demo and is not production-secure.
 
 ## Developer checks
 
@@ -30,6 +54,8 @@ npm run typecheck
 npm test
 npm run build
 ```
+
+`npm test` includes database integration tests when `DATABASE_URL` is set (from the environment or `.env.local`). They run inside a temporary schema that is dropped afterwards, so your demo data is not touched. Without a database they are skipped.
 
 `npm run test:watch` starts Vitest in watch mode. `npm run build` creates the production build; `npm start` serves that build.
 

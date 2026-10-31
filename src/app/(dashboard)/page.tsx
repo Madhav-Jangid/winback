@@ -20,6 +20,8 @@ interface DashboardData {
     language: string;
   }>;
   is_demo: boolean;
+  as_of: string;
+  merchant_name: string | null;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -134,7 +136,16 @@ export default function DashboardPage() {
       <div className="page-header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h1 className="page-title">Dashboard</h1>
-          <p className="page-subtitle">Overview of your customer retention performance</p>
+          <p className="page-subtitle">
+            {data?.merchant_name ? `${data.merchant_name} · ` : ''}Overview of your customer retention performance
+          </p>
+          {data?.is_demo && (
+            <p className="form-help" style={{ marginTop: '0.25rem' }}>
+              Risk is calculated as of{' '}
+              {new Date(data.as_of).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}
+              {' '}(fixed demo date, so the demo stays consistent).
+            </p>
+          )}
         </div>
         <Link href="/campaigns/new" className="btn btn-primary">
           ＋ New Campaign
@@ -154,7 +165,7 @@ export default function DashboardPage() {
           <div>
             <strong>Database connection error</strong>
             <p style={{ marginTop: '0.25rem', fontSize: '0.8rem' }}>{error}</p>
-            <p style={{ marginTop: '0.25rem', fontSize: '0.8rem' }}>Set DATABASE_URL in .env.local and ensure PostgreSQL is running.</p>
+            <p style={{ marginTop: '0.25rem', fontSize: '0.8rem' }}>Set DATABASE_URL in .env.local, then run <code>npm run db:setup</code>.</p>
             <button onClick={loadDashboard} className="btn btn-secondary" style={{ marginTop: '0.75rem' }}>Retry</button>
           </div>
         </div>

@@ -6,7 +6,7 @@ import { assessRisk } from '@/lib/risk/engine';
 import { checkEligibility } from '@/lib/eligibility/service';
 import { assignGroup } from '@/lib/experiments/assignment';
 
-const DEMO_MERCHANT_ID = '00000000-0000-0000-0000-000000000001';
+import { DEMO_MERCHANT_ID } from '@/lib/demo/constants';
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

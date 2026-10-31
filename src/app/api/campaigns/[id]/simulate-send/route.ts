@@ -4,7 +4,7 @@ import type { ConsentStatus } from '@/types';
 import { writeAuditEvent } from '@/lib/audit/service';
 import { checkEligibility } from '@/lib/eligibility/service';
 
-const DEMO_MERCHANT_ID = '00000000-0000-0000-0000-000000000001';
+import { DEMO_MERCHANT_ID } from '@/lib/demo/constants';
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

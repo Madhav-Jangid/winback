@@ -3,7 +3,7 @@ import { createHash } from 'crypto';
 import { query, withTransaction } from '@/lib/db/pool';
 import { writeAuditEvent } from '@/lib/audit/service';
 
-const DEMO_MERCHANT_ID = '00000000-0000-0000-0000-000000000001';
+import { DEMO_MERCHANT_ID } from '@/lib/demo/constants';
 
 function seededRandom(seed: string): number {
   const hash = createHash('sha256').update(seed).digest('hex');

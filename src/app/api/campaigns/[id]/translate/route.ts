@@ -4,7 +4,7 @@ import { query } from '@/lib/db/pool';
 import { getTranslator } from '@/lib/providers/factory';
 import { writeAuditEvent } from '@/lib/audit/service';
 
-const DEMO_MERCHANT_ID = '00000000-0000-0000-0000-000000000001';
+import { DEMO_MERCHANT_ID } from '@/lib/demo/constants';
 
 const TranslateSchema = z.object({
   target_language: z.string().min(2).max(10),

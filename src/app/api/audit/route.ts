@@ -1,7 +1,7 @@
 import { connection, NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db/pool';
 
-const DEMO_MERCHANT_ID = '00000000-0000-0000-0000-000000000001';
+import { DEMO_MERCHANT_ID } from '@/lib/demo/constants';
 
 export async function GET(req: NextRequest) {
   await connection(); // always run at request time; never prerender

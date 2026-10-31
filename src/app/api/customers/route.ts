@@ -1,8 +1,8 @@
 import { connection, NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db/pool';
 import { assessRisk } from '@/lib/risk/engine';
-
-const DEMO_MERCHANT_ID = '00000000-0000-0000-0000-000000000001';
+import { getAppNow } from '@/lib/clock';
+import { DEMO_MERCHANT_ID } from '@/lib/demo/constants';
 
 export async function GET(req: NextRequest) {
   await connection(); // always run at request time; never prerender
@@ -40,6 +40,7 @@ export async function GET(req: NextRequest) {
     );
 
     // Get all purchases for risk calculation
+    const now = getAppNow();
     const purchasesRes = await query<{ customer_id: string; occurred_at: string; status: string }>(
       `SELECT customer_id, occurred_at, status FROM purchases WHERE merchant_id = $1`,
       [DEMO_MERCHANT_ID],
@@ -58,7 +59,7 @@ export async function GET(req: NextRequest) {
     const customersWithRisk = customersRes.rows.map((c) => {
       const purchases = purchasesByCustomer.get(c.id) ?? [];
       const completedPurchases = purchases.filter((p) => p.status === 'completed');
-      const risk = assessRisk(c.id, completedPurchases);
+      const risk = assessRisk(c.id, completedPurchases, { now });
 
       // Apply opted-out status override
       if (c.opted_out_at) {

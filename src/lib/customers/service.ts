@@ -125,17 +125,22 @@ export interface CustomerDirectory {
   all: CustomerProfile[];
 }
 
+/**
+ * @param policyOverride frequency policy to judge contactability with (a campaign's own limits);
+ *   defaults to the merchant's defaults
+ */
 export async function getCustomerDirectory(
   db: Queryable,
   merchantId: string,
   now: Date,
   query: CustomerQuery = { filter: 'all', search: '' },
+  policyOverride?: ContactPolicy,
 ): Promise<CustomerDirectory> {
   const merchant = await getMerchantSettings(db, merchantId);
   if (!merchant) {
     return { merchant: null, policy: null, as_of: now.toISOString(), counts: countByFilter([]), customers: [], all: [] };
   }
-  const policy = policyOf(merchant);
+  const policy = policyOverride ?? policyOf(merchant);
   const [customers, stats] = await Promise.all([
     listCustomersWithPurchases(db, merchantId),
     getMessageStatsByCustomer(db, merchantId, windowStart(now, policy)),

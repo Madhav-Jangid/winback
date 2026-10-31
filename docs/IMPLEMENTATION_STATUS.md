@@ -4,7 +4,55 @@ Updated: 2026-10-31
 
 ## Current phase
 
-**Phase 3 — Customers and risk detection: complete (gate passed).** Next up: Phase 4.
+**Phase 4 — Campaign draft and validation: complete (gate passed).** Next up: Phase 5.
+
+## Phase 4 — Campaign draft and validation
+
+### Decisions
+
+- **Offers are a typed union** (`src/lib/campaigns/schema.ts`): percentage (1–50%, optional cap), fixed amount (≤ ₹1,000), free item (name + cost to merchant, ≤ ₹1,000), or no offer; optional minimum order and expiry (1–90 days). Unknown fields are rejected. No expiry is shown unless configured.
+- **Documented MVP limits** (`src/lib/campaigns/rules.ts`): message length SMS 320 / WhatsApp 1000 / Email 2000; budget ≤ ₹10 lakh; frequency cap 1–5; cooldown 1–180 days; control group 20%. Money is integer paise end to end; the form converts typed rupees without floating point.
+- **Segments:** at-risk repeat customers; previously active but now overdue (at risk with 3+ completed purchases); all eligible customers. Exclusion counts reuse the customer service and the same eligibility check as sending, evaluated with the campaign's own cooldown and cap. The preview API returns counts only, never customer ids.
+- **Status is decided by the server.** After every save the campaign is `ready_for_approval` if all readiness checks pass (non-empty segment, message present and within the channel limit, cost per redemption known and covered by the budget), else `draft`. Phase 5 adds the plan and Phase 6 the translation to these checks.
+- **Versioning:** only material fields (segment, offer, budget, frequency cap, cooldown, language, channel, message) bump the version, and they invalidate an existing approval (audited as `approval_invalidated`). Name and goal are cosmetic. Updates require `expected_version`; a stale one returns `409 VERSION_CONFLICT`. Rows are locked with `SELECT … FOR UPDATE` and each change is written with its audit event in one transaction.
+- **State machine** in `src/lib/campaigns/state.ts`. Editable: draft, ready_for_approval, approved. Cancel is allowed before sending (E-32) and is final.
+- **Treatment/control split** in the preview is exact for saved campaigns (deterministic hash) and marked ≈ for unsaved drafts.
+- **API errors** use one helper (`src/lib/http.ts`): typed codes, 413 for bodies over 32 KB, 400 for malformed JSON, and 503 without internal details for anything unexpected.
+
+### Acceptance criteria
+
+- [x] Campaign builder: basics, audience with live preview, offer, budget and frequency, language and simulated channel, message with character counter, readiness checklist, cost estimate.
+- [x] Segment preview with eligible count and exclusions (no consent, opted out, insufficient history, frequency cap, other).
+- [x] Merchant defaults (budget, cooldown, cap) prefilled and visible before approval.
+- [x] Server-side validation on every mutating route; validation messages shown next to fields.
+- [x] State machine with invalid-transition tests; empty-segment behaviour (E-17).
+- [x] Gate: a campaign can be saved and reloaded as a valid draft.
+
+### Files
+
+- New: `src/lib/campaigns/{rules,schema,segments,state,readiness,service}.ts` (+ tests), `src/lib/repositories/campaigns.ts`, `src/lib/errors.ts`, `src/lib/http.ts`, `src/app/api/campaigns/[id]/cancel/route.ts`, `src/app/api/segments/[id]/preview/route.ts`, `src/app/api/campaigns/route.test.ts`, `src/components/campaigns/CampaignBuilder.tsx`, `src/app/(dashboard)/campaigns/{page,new/page,[id]/page}.tsx`, `src/test/fixtures/campaign.ts`, `src/test/helpers/demo-profiles.ts`, `src/test/integration/campaigns.test.ts`
+- Changed: `src/app/api/campaigns/route.ts` and `[id]/route.ts` (rewritten), `src/lib/audit/service.ts` (optional db for transactions, `campaign_cancelled`), `src/lib/customers/service.ts` (policy override), `src/lib/repositories/merchants.ts` (default budget), `src/lib/experiments/assignment.ts` (shared control share), `src/types/index.ts` (`OfferConfig` = typed offer), seed snapshot shape, dashboard link, `src/test/helpers/test-db.ts` (fewer round trips), `.gitignore`
+
+### Verification (2026-10-31)
+
+| Command | Result |
+|---|---|
+| `npm test` | PASS — 13 files, 130 tests (29 database integration tests on Supabase) |
+| `npm run lint` | PASS — 0 errors, 1 warning (Phase 5 file) |
+| `npm run typecheck` | PASS |
+| `npm run build` | PASS |
+| Live API on `next start` | create → 201 ready_for_approval, v1, 12 eligible, exact 8/4 split; invalid → 400 with field list; PATCH channel → v2; stale version → 409 VERSION_CONFLICT; 400-char SMS → draft + MESSAGE_TOO_LONG; cancel → cancelled; edit after cancel → 409 CAMPAIGN_LOCKED; preview hides customer ids |
+| Pages | `/campaigns`, `/campaigns/new`, `/campaigns/[id]` render; headless Edge screenshot confirms live preview runs in the browser (19 match, 12 eligible, exclusions listed) |
+| Cleanup | `npm run db:seed` restored the demo baseline afterwards |
+
+### Known issues
+
+- A stray "New draft" campaign had leaked into the real database from the earlier session-sharing test bug; removed by the reseed. The test helper no longer uses session state.
+- The builder shows readiness and cost only once required fields are valid.
+- Copying a locked campaign into a new draft is not implemented yet.
+- The old plan/approve/send/translate/outcome routes are unchanged and are rewritten in Phases 5–9.
+
+## Phase 3 — Customers and risk detection (complete)
 
 ## Phase 3 — Customers and risk detection
 
@@ -135,7 +183,7 @@ Tests covered: DM-01, DM-02, DM-03, FK/check/unique constraints, RLS, failed-res
 
 ## Next task
 
-Phase 4 — Campaign draft and validation: campaign builder, segment preview with exclusion counts (reuse `getCustomerDirectory` profiles and reason codes), offer configuration, budget/frequency settings, state machine. Tests: schema validation, bounds, invalid transitions, empty segment.
+Phase 5 — Gemini planner and fallback: provider interface, structured output schema validated with the Phase 4 offer schema and limits, Gemini adapter with timeout, labelled demo fallback, aggregate-only planner input (no customer PII). Tests AI-01 to AI-07. Rewrite `api/campaigns/[id]/plan` on the campaign service so plans go through `updateCampaign` (versioning, readiness, audit).
 
 ## Phase overview
 
@@ -145,4 +193,5 @@ Phase 4 — Campaign draft and validation: campaign builder, segment preview wit
 | 1 — Skeleton and developer workflow | Complete |
 | 2 — Database and seeded demo dataset | Complete |
 | 3 — Customers and risk detection | Complete |
+| 4 — Campaign draft and validation | Complete |
 | 3–11 | Not started / existing artifacts unverified |

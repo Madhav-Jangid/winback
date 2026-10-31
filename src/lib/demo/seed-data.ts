@@ -154,7 +154,7 @@ export function buildDemoDataset(): DemoDataset {
       id: HISTORICAL_CAMPAIGN_ID,
       name: 'September check-in (historical demo)',
       goal: 'Remind lapsing regulars to visit',
-      segment_snapshot: JSON.stringify({ segment: 'at_risk_repeat', note: 'Seeded historical campaign used to demonstrate cross-campaign frequency caps.' }),
+      segment_snapshot: JSON.stringify({ segment_type: 'at_risk', note: 'Seeded historical campaign used to demonstrate cross-campaign frequency caps.' }),
       offer_config: JSON.stringify({ type: 'no_offer' }),
       budget_minor: 0,
       frequency_cap: 1,

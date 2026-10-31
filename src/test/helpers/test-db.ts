@@ -38,10 +38,10 @@ function schemaScoped(client: Client, schema: string): Queryable {
     async query<R extends QueryResultRow = QueryResultRow>(text: string, values?: unknown[]): Promise<QueryResult<R>> {
       const command = text.trim().toUpperCase();
       if (command === 'BEGIN') {
-        const result = await client.query<R>('BEGIN');
-        await client.query(setPath);
+        // One round trip: the remote test database is far away.
+        await client.query(`BEGIN; ${setPath}`);
         inTransaction = true;
-        return result;
+        return { command: 'BEGIN', rowCount: null, oid: 0, fields: [], rows: [] } as unknown as QueryResult<R>;
       }
       if (command === 'COMMIT' || command === 'ROLLBACK') {
         inTransaction = false;
@@ -50,9 +50,8 @@ function schemaScoped(client: Client, schema: string): Queryable {
       if (inTransaction) return client.query<R>(text, values);
 
       // Standalone statement: give it its own transaction.
-      await client.query('BEGIN');
+      await client.query(`BEGIN; ${setPath}`);
       try {
-        await client.query(setPath);
         const result = await client.query<R>(text, values);
         await client.query('COMMIT');
         return result;

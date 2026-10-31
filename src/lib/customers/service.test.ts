@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEMO_REFERENCE_DATE } from '@/lib/demo/constants';
-import { buildDemoDataset, DEMO_CUSTOMERS } from '@/lib/demo/seed-data';
+import { DEMO_CUSTOMERS } from '@/lib/demo/seed-data';
+import { demoProfiles } from '@/test/helpers/demo-profiles';
 import type { CustomerWithPurchases, MessageStats } from '@/lib/repositories/customers';
 import {
   applyQuery,
@@ -30,26 +31,6 @@ function customer(overrides: Partial<CustomerWithPurchases> = {}): CustomerWithP
 const sent = (daysAgo: number, count = 1): MessageStats => ({
   last_sent_at: new Date(NOW.getTime() - daysAgo * DAY_MS).toISOString(), count_in_window: count,
 });
-
-/** Profiles for the full demo dataset, built without a database. */
-function demoProfiles(): CustomerProfile[] {
-  const data = buildDemoDataset();
-  return data.customers.map((c) => {
-    const msg = data.messages.find((m) => m.customer_id === c.id);
-    return buildCustomerProfile(
-      {
-        ...c,
-        opted_out_at: c.opted_out_at?.toISOString() ?? null,
-        purchases: data.purchases.filter((p) => p.customer_id === c.id).map((p) => ({
-          ...p, occurred_at: p.occurred_at.toISOString(), currency: 'INR', source: 'demo',
-        })),
-      },
-      msg ? { last_sent_at: msg.sent_at.toISOString(), count_in_window: 1 } : undefined,
-      NOW,
-      POLICY,
-    );
-  });
-}
 
 describe('customer profiles', () => {
   it('separates purchase-rhythm risk from contactability', () => {

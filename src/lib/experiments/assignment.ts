@@ -4,10 +4,11 @@
  */
 
 import { createHash } from 'crypto';
+import { CONTROL_SHARE } from '@/lib/campaigns/rules';
 import { GroupAssignment } from '@/types';
 
 export const EXPERIMENT_SALT = 'winback-exp-v1';
-export const CONTROL_RATIO = 0.2; // 20% control group
+export const CONTROL_RATIO = CONTROL_SHARE; // 20% control group
 
 /**
  * Assign a customer to treatment or control group.

@@ -810,6 +810,10 @@ tbody tr:hover {
   .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
 }
 
+@media (max-width: 1024px) {
+  .builder-grid { grid-template-columns: minmax(0, 1fr) !important; }
+}
+
 /* ─── Character counter ─── */
 .char-counter {
   text-align: right;

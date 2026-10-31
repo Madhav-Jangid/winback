@@ -191,7 +191,7 @@ export default function DashboardPage() {
                 <div className="kpi-sub">{data.at_risk_contactable} can be contacted now</div>
               </div>
             </Link>
-            <Link href="/campaigns?status=draft" style={{ textDecoration: 'none' }}>
+            <Link href="/campaigns?status=open" style={{ textDecoration: 'none' }}>
               <div className="kpi-card">
                 <span className="kpi-icon">📝</span>
                 <div className="kpi-label">Active Campaigns</div>

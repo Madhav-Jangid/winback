@@ -69,13 +69,8 @@ export interface Purchase {
   created_at: string;
 }
 
-export interface OfferConfig {
-  type: OfferType;
-  value?: number;
-  description?: string;
-  minimum_order_value_minor?: number;
-  max_discount_minor?: number;
-}
+/** Campaign offer. Validated by `offerSchema` in src/lib/campaigns/schema.ts. */
+export type OfferConfig = import('@/lib/campaigns/rules').Offer;
 
 export interface Campaign {
   id: string;

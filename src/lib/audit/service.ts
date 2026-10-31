@@ -2,11 +2,13 @@
  * Winback AI — Audit Service
  */
 
-import { query } from '@/lib/db/pool';
+import { getPool } from '@/lib/db/pool';
+import type { Queryable } from '@/lib/db/types';
 
 export type AuditEventType =
   | 'campaign_created'
   | 'campaign_updated'
+  | 'campaign_cancelled'
   | 'plan_generated'
   | 'translation_requested'
   | 'translation_completed'
@@ -31,8 +33,8 @@ export async function writeAuditEvent(params: {
   entity_type: string;
   entity_id: string;
   metadata?: Record<string, unknown>;
-}): Promise<void> {
-  await query(
+}, db: Queryable = getPool()): Promise<void> {
+  await db.query(
     `INSERT INTO audit_events 
       (merchant_id, campaign_id, actor_type, actor_id, event_type, entity_type, entity_id, metadata)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,

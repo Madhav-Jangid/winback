@@ -38,6 +38,7 @@ export const isEditable = (status: CampaignStatus) => EDITABLE_STATUSES.includes
  */
 export const MATERIAL_FIELDS = [
   'segment_type', 'offer', 'budget_minor', 'frequency_cap', 'cooldown_days', 'language', 'channel', 'original_message',
+  'localized_message',
 ] as const satisfies readonly (keyof CampaignDraft)[];
 
 export function changedFields(before: CampaignDraft, after: CampaignDraft): (keyof CampaignDraft)[] {

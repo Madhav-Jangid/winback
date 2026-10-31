@@ -1,122 +1,123 @@
 /**
- * Winback AI — Sarvam AI Translator
- * Uses Sarvam's translate API for Indian languages.
+ * Sarvam translator (FR-07). Calls POST https://api.sarvam.ai/translate directly with fetch (the
+ * same request the `sarvamai` SDK makes), so the timeout and error handling are ours and the key
+ * travels only in a header. Failures throw TranslatorError with safe messages; the caller never
+ * substitutes other text silently.
+ *
+ * Numerals are requested as `international` so digits in offer terms (10%, ₹100, 14 days) stay
+ * verifiable. The mode is `formal`, supported by both models.
  */
-
 import { z } from 'zod';
-import { Translator } from '../interfaces';
-import { TranslationInput, TranslationResult } from '@/types';
-import { DemoTranslator } from '../demo';
+import { SOURCE_LANGUAGE } from '@/lib/localization/rules';
+import { TranslatorError, type TranslationInput, type TranslationResult } from '@/lib/localization/types';
+import type { Translator } from '../interfaces';
+import { DEFAULT_SARVAM_MODEL, SARVAM_LANGUAGE_CODES, SARVAM_MODEL_LIMITS, type SarvamModel } from './languages';
 
-export const SUPPORTED_LANGUAGES: Record<string, string> = {
-  en: 'English',
-  hi: 'Hindi',
-  ta: 'Tamil',
-  te: 'Telugu',
-  ml: 'Malayalam',
-  kn: 'Kannada',
-  bn: 'Bengali',
-  gu: 'Gujarati',
-  mr: 'Marathi',
-  pa: 'Punjabi',
-  od: 'Odia',
-};
+export const SARVAM_TRANSLATE_URL = 'https://api.sarvam.ai/translate';
+export const SARVAM_TIMEOUT_MS = 20_000;
 
-const SARVAM_TRANSLATE_URL = 'https://api.sarvam.ai/translate';
-const PROVIDER_TIMEOUT_MS = 10000;
-
-const SarvamResponseSchema = z.object({
+const responseSchema = z.object({
   translated_text: z.string(),
+  request_id: z.string().nullish(),
   source_language_code: z.string().optional(),
-  target_language_code: z.string().optional(),
 });
+const errorSchema = z.object({ error: z.object({ code: z.string().optional() }) });
+
+export interface SarvamTranslatorOptions {
+  apiKey: string;
+  model?: SarvamModel;
+  timeoutMs?: number;
+  /** Injectable for tests. */
+  fetchImpl?: typeof fetch;
+}
+
+/**
+ * Use the configured model, or the larger-limit model when the text does not fit. The model that
+ * was actually used is recorded with the translation.
+ */
+export function resolveModel(configured: SarvamModel, length: number): SarvamModel {
+  if (length <= SARVAM_MODEL_LIMITS[configured]) return configured;
+  if (length <= SARVAM_MODEL_LIMITS['sarvam-translate:v1']) return 'sarvam-translate:v1';
+  throw new TranslatorError(
+    'TRANSLATOR_TEXT_TOO_LONG',
+    `The message is ${length} characters; Sarvam accepts at most ${SARVAM_MODEL_LIMITS['sarvam-translate:v1']}. Shorten the English message.`,
+  );
+}
+
+/** A fixed hint per Sarvam error code: the provider's own message text is never echoed. */
+function hintFor(status: number, code: string | undefined): string {
+  switch (code) {
+    case 'insufficient_quota_error': return ' (Sarvam quota exhausted)';
+    case 'invalid_api_key_error':
+    case 'authentication_error': return ' (check SARVAM_API_KEY)';
+    case 'rate_limit_exceeded_error': return ' (rate limit)';
+    case 'unprocessable_entity_error': return ' (Sarvam could not translate this text)';
+  }
+  if (status === 401 || status === 403) return ' (check SARVAM_API_KEY)';
+  if (status === 429) return ' (rate limit or quota)';
+  if (status === 422) return ' (Sarvam could not translate this text)';
+  return '';
+}
 
 export class SarvamTranslator implements Translator {
-  private apiKey: string;
-  private fallback: DemoTranslator;
+  private readonly apiKey: string;
+  private readonly model: SarvamModel;
+  private readonly timeoutMs: number;
+  private readonly fetchImpl: typeof fetch;
 
-  constructor(apiKey: string) {
-    this.apiKey = apiKey;
-    this.fallback = new DemoTranslator();
+  constructor(options: SarvamTranslatorOptions) {
+    this.apiKey = options.apiKey;
+    this.model = options.model ?? DEFAULT_SARVAM_MODEL;
+    this.timeoutMs = options.timeoutMs ?? SARVAM_TIMEOUT_MS;
+    this.fetchImpl = options.fetchImpl ?? fetch;
   }
 
   async translate(input: TranslationInput): Promise<TranslationResult> {
-    if (!SUPPORTED_LANGUAGES[input.target_language]) {
-      return {
-        original: input.text,
-        translated: '',
-        source: 'demo_fallback',
-        status: 'failed',
-        error: `Language '${input.target_language}' is not supported by Sarvam.`,
-      };
+    const target = SARVAM_LANGUAGE_CODES[input.target_language];
+    if (!target || input.target_language === SOURCE_LANGUAGE) {
+      throw new TranslatorError('TRANSLATOR_UNSUPPORTED_LANGUAGE', `Sarvam translation is not available for language "${input.target_language.slice(0, 10)}".`);
     }
+    const model = resolveModel(this.model, input.text.length);
 
-    if (input.target_language === 'en') {
-      return {
-        original: input.text,
-        translated: input.text,
-        source: 'sarvam',
-        status: 'success',
-      };
-    }
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), PROVIDER_TIMEOUT_MS);
-
+    let response: Response;
     try {
-      const response = await fetch(SARVAM_TRANSLATE_URL, {
+      response = await this.fetchImpl(SARVAM_TRANSLATE_URL, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'api-subscription-key': this.apiKey,
-        },
+        headers: { 'Content-Type': 'application/json', 'api-subscription-key': this.apiKey },
         body: JSON.stringify({
           input: input.text,
-          source_language_code: input.source_language === 'en' ? 'en-IN' : input.source_language,
-          target_language_code: `${input.target_language}-IN`,
-          speaker_gender: 'Male',
+          source_language_code: SARVAM_LANGUAGE_CODES[SOURCE_LANGUAGE],
+          target_language_code: target,
+          model,
           mode: 'formal',
-          model: 'mayura:v1',
-          enable_preprocessing: false,
+          numerals_format: 'international',
         }),
-        signal: controller.signal,
+        signal: AbortSignal.timeout(this.timeoutMs),
       });
-
-      clearTimeout(timeout);
-
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => 'Unknown error');
-        throw new Error(`Sarvam API error ${response.status}: ${errorText.slice(0, 200)}`);
+    } catch (error) {
+      const name = error instanceof Error ? error.name : '';
+      if (name === 'TimeoutError' || name === 'AbortError') {
+        throw new TranslatorError('TRANSLATOR_TIMEOUT', `Sarvam did not respond within ${Math.max(1, Math.round(this.timeoutMs / 1000))} seconds.`);
       }
-
-      const data = await response.json();
-      const validated = SarvamResponseSchema.parse(data);
-
-      return {
-        original: input.text,
-        translated: validated.translated_text,
-        source: 'sarvam',
-        status: 'success',
-      };
-    } catch (err) {
-      clearTimeout(timeout);
-      if (err instanceof Error && err.name === 'AbortError') {
-        return {
-          original: input.text,
-          translated: '',
-          source: 'demo_fallback',
-          status: 'failed',
-          error: 'Sarvam translation timed out. Please retry.',
-        };
-      }
-      console.error('[Sarvam] Translation failed:', err instanceof Error ? err.message : err);
-      return {
-        original: input.text,
-        translated: '',
-        source: 'demo_fallback',
-        status: 'failed',
-        error: err instanceof Error ? err.message : 'Translation failed',
-      };
+      throw new TranslatorError('TRANSLATOR_NETWORK_ERROR', 'Could not reach Sarvam. Check the network connection.');
     }
+
+    if (!response.ok) {
+      let code: string | undefined;
+      try {
+        code = errorSchema.parse(await response.json()).error.code;
+      } catch {
+        // Unreadable error body: fall back to the status alone.
+      }
+      throw new TranslatorError('TRANSLATOR_HTTP_ERROR', `Sarvam returned HTTP ${response.status}${hintFor(response.status, code)}.`);
+    }
+
+    let translated: string;
+    try {
+      translated = responseSchema.parse(await response.json()).translated_text;
+    } catch {
+      throw new TranslatorError('TRANSLATOR_INVALID_RESPONSE', 'Sarvam returned an unreadable response.');
+    }
+    return { translated_text: translated, source: 'sarvam', model, fallback_reason: null };
   }
 }

@@ -13,7 +13,10 @@ import { campaignDraftSchema, fieldErrors, type CampaignDraft } from '@/lib/camp
 import { SEGMENT_TYPES, SEGMENTS, type SegmentPreview, type SegmentType } from '@/lib/campaigns/segments';
 import type { CampaignStatus } from '@/types';
 import type { CampaignPlanResult } from '@/lib/planner/types';
+import type { TranslateResponse } from '@/lib/localization/types';
+import type { TranslationMeta } from '@/lib/localization/rules';
 import PlanPanel from './PlanPanel';
+import TranslationPanel from './TranslationPanel';
 
 type PreviewCounts = Omit<SegmentPreview, 'eligible_customer_ids'>;
 
@@ -21,7 +24,7 @@ interface FormState {
   name: string; goal: string; segment_type: SegmentType; offer_type: OfferType;
   percent: string; max_discount: string; amount: string; item_name: string; item_cost: string;
   min_order: string; expiry_days: string; budget: string; frequency_cap: string; cooldown_days: string;
-  language: string; channel: Channel; original_message: string;
+  language: string; channel: Channel; original_message: string; localized_message: string;
 }
 
 /** Form field → key used in server validation errors. */
@@ -62,7 +65,7 @@ function toForm(d: CampaignDraft): FormState {
     ...offerFields(d.offer),
     name: d.name, goal: d.goal, segment_type: d.segment_type,
     budget: minorToRupeesInput(d.budget_minor), frequency_cap: String(d.frequency_cap), cooldown_days: String(d.cooldown_days),
-    language: d.language, channel: d.channel, original_message: d.original_message,
+    language: d.language, channel: d.channel, original_message: d.original_message, localized_message: d.localized_message,
   };
 }
 
@@ -95,7 +98,7 @@ function fromForm(f: FormState): { draft: CampaignDraft | null; errors: Record<s
     name: f.name, goal: f.goal, segment_type: f.segment_type, offer,
     budget_minor: money('budget', true) ?? -1,
     frequency_cap: int(f.frequency_cap), cooldown_days: int(f.cooldown_days),
-    language: f.language, channel: f.channel, original_message: f.original_message,
+    language: f.language, channel: f.channel, original_message: f.original_message, localized_message: f.localized_message,
   });
   if (!parsed.success) Object.assign(errors, { ...fieldErrors(parsed.error), ...errors });
   return { draft: parsed.success && Object.keys(errors).length === 0 ? parsed.data : null, errors };
@@ -113,6 +116,7 @@ export interface CampaignBuilderProps {
   serverReadiness?: ReadinessIssue[];
   planSource?: string | null;
   planRationale?: string | null;
+  translation?: TranslationMeta | null;
 }
 
 export default function CampaignBuilder(props: CampaignBuilderProps) {
@@ -123,6 +127,7 @@ export default function CampaignBuilder(props: CampaignBuilderProps) {
   const [status, setStatus] = useState<CampaignStatus>(props.status ?? 'draft');
   const [approvedVersion, setApprovedVersion] = useState(props.approvedVersion ?? null);
   const [editable, setEditable] = useState(props.editable ?? true);
+  const [translation, setTranslation] = useState<TranslationMeta | null>(props.translation ?? null);
   const [serverIssues, setServerIssues] = useState<ReadinessIssue[]>(props.serverReadiness ?? []);
   const [serverErrors, setServerErrors] = useState<Record<string, string>>({});
   const [banner, setBanner] = useState<{ kind: 'error' | 'success'; text: string; reload?: boolean } | null>(null);
@@ -168,7 +173,17 @@ export default function CampaignBuilder(props: CampaignBuilderProps) {
     return () => { controller.abort(); clearTimeout(timer); };
   }, [form.segment_type, cooldown, cap, limitsValid, props.campaignId]);
 
-  const liveIssues = draft && preview ? checkReadiness(draft, preview, props.currency) : null;
+  // Editing the translated text by hand counts as reviewing it, so the live checklist treats it
+  // like the server will after saving.
+  const localizedEdited = form.localized_message !== saved.localized_message;
+  const effectiveTranslation: TranslationMeta | null = localizedEdited && draft
+    ? {
+      source: translation?.source ?? 'manual', model: translation?.model ?? null, language: draft.language,
+      source_text: draft.original_message.trim(), edited: true, translated_at: translation?.translated_at ?? '',
+      warnings: [], fallback_reason: translation?.fallback_reason ?? null,
+    }
+    : translation;
+  const liveIssues = draft && preview ? checkReadiness({ ...draft, translation: effectiveTranslation }, preview, props.currency) : null;
   const issues = liveIssues ?? serverIssues;
   const costPer = draft && preview ? offerCostPerRedemptionMinor(draft.offer, preview.avg_order_value_minor) : null;
   const messageLimit = CHANNEL_MESSAGE_LIMITS[form.channel];
@@ -205,6 +220,7 @@ export default function CampaignBuilder(props: CampaignBuilderProps) {
       setVersion(json.campaign.version);
       setStatus(json.campaign.status);
       setApprovedVersion(json.campaign.approved_version);
+      setTranslation(json.campaign.translation ?? null);
       setEditable(json.editable);
       setServerIssues(json.readiness);
       setBanner({ kind: 'success', text: `Saved. Version ${json.campaign.version}, ${json.campaign.status === 'ready_for_approval' ? 'ready for approval' : json.campaign.status}.` });
@@ -215,6 +231,31 @@ export default function CampaignBuilder(props: CampaignBuilderProps) {
       setSaving(false);
     }
   }
+
+  /** Take the server's view of the campaign after it saved a translation. */
+  function adoptTranslation(response: TranslateResponse) {
+    const next = toForm({ ...response.campaign, offer: response.campaign.offer });
+    setForm(next);
+    setSaved(next);
+    setVersion(response.campaign.version);
+    setStatus(response.campaign.status);
+    setApprovedVersion(response.campaign.approved_version);
+    setEditable(response.editable);
+    setServerIssues(response.readiness);
+    setTranslation(response.campaign.translation);
+    const result = response.translation_result;
+    setBanner({
+      kind: 'success',
+      text: result.cached
+        ? 'A current translation already exists, so nothing was changed. Use Re-translate to replace it.'
+        : `Translated (${result.source === 'sarvam' ? 'Sarvam' : 'demo fallback'}) and saved as version ${response.campaign.version}. Review the text before approving.`,
+    });
+    router.refresh();
+  }
+  const translateBlockedReason = props.mode === 'create' ? null
+    : !editable ? 'This campaign can no longer be edited.'
+    : dirty ? 'Save your changes first: translation works from the saved English message.'
+    : null;
 
   function applyPlan(plan: CampaignPlanResult, withOffer: boolean) {
     setForm((f) => ({ ...f, original_message: plan.message_draft, ...(withOffer ? offerFields(plan.offer) : {}) }));
@@ -365,7 +406,7 @@ export default function CampaignBuilder(props: CampaignBuilderProps) {
 
           <Section title="5. Message">
             <div className="grid-2">
-              <Field label="Customer language" help="Translation is added in a later step." error={err('language')}>
+              <Field label="Customer language" help="The message is translated into this language below." error={err('language')}>
                 <select className="form-select" value={form.language} onChange={(e) => set('language', e.target.value)}>
                   {LANGUAGES.map((l) => <option key={l.code} value={l.code}>{l.name}</option>)}
                 </select>
@@ -390,6 +431,19 @@ export default function CampaignBuilder(props: CampaignBuilderProps) {
             <div className={`char-counter ${messageLength > messageLimit ? 'over' : ''}`} aria-live="polite">
               {messageLength} / {messageLimit} characters for {CHANNEL_LABELS[form.channel]}
             </div>
+            <TranslationPanel
+              campaignId={props.campaignId}
+              language={form.language}
+              englishMessage={form.original_message}
+              localized={form.localized_message}
+              onLocalizedChange={(value) => set('localized_message', value)}
+              translation={effectiveTranslation}
+              channelLabel={CHANNEL_LABELS[form.channel]}
+              channelLimit={messageLimit}
+              offerSummary={draft ? describeOffer(draft.offer, props.currency) : null}
+              blockedReason={translateBlockedReason}
+              onAdopt={adoptTranslation}
+            />
           </Section>
 
           <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>

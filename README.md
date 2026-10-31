@@ -48,6 +48,12 @@ With `GEMINI_API_KEY` set, **Draft message** on a saved campaign calls Gemini (d
 
 Without a key the app uses a clearly labelled demo template. If Gemini fails (timeout, quota, invalid answer after one retry), nothing changes and you are offered **Use demo draft instead**.
 
+### Localization (Sarvam)
+
+For a non-English campaign, **Translate** on a saved campaign calls Sarvam (`POST api.sarvam.ai/translate`; default model `mayura:v1`, set `SARVAM_MODEL=sarvam-translate:v1` for the 2000-character model). Only the English message and the target language are sent. The English text and the translation sit side by side; the translation is editable, saved as a new campaign version with its provenance (Sarvam / demo fallback / manual, model, edited), and must match the current English message: if the English or the language changes, the translation is **stale** and the campaign cannot be approved until you re-translate or review and save it. Unreviewed machine output must keep the offer's numbers (10%, ₹100, 14 days), checked across scripts.
+
+Without `SARVAM_API_KEY` the demo fallback does **not** translate: it returns the English text labelled as demo output, which must be reviewed before approval. If Sarvam fails, nothing is saved and you can retry, type the translation yourself, or choose the labelled demo draft.
+
 ### Demo data and the demo clock
 
 The seed (`src/lib/demo/seed-data.ts`) is a fictional café with 31 synthetic customers covering at-risk, healthy, insufficient-history, opted-out, unknown/revoked consent, frequency-capped, refunded, cancelled, and duplicate-timestamp cases. Purchase dates are relative to a fixed demo date, **1 Oct 2026**, and in demo mode risk is calculated as of that date, so the demo gives the same results whenever it is run.

@@ -50,10 +50,16 @@ const draftFields = {
   language: z.enum(LANGUAGE_CODES, { message: 'Unsupported language' }),
   channel: z.enum(CHANNELS),
   original_message: z.string().max(MESSAGE_MAX_STORED),
+  /** Customer-language text. Edited by hand, or filled by a translation (which also records its provenance). */
+  localized_message: z.string().max(MESSAGE_MAX_STORED),
 };
 
 export const campaignDraftSchema = z
-  .object({ ...draftFields, original_message: draftFields.original_message.default('') })
+  .object({
+    ...draftFields,
+    original_message: draftFields.original_message.default(''),
+    localized_message: draftFields.localized_message.default(''),
+  })
   .strict();
 export type CampaignDraftInput = z.input<typeof campaignDraftSchema>;
 export type CampaignDraft = z.output<typeof campaignDraftSchema>;

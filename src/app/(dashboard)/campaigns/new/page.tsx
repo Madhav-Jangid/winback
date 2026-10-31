@@ -51,6 +51,7 @@ async function NewCampaignForm() {
     language: 'hi',
     channel: 'whatsapp',
     original_message: '',
+    localized_message: '',
   };
   return <CampaignBuilder mode="create" initial={initial} currency={merchant.currency} />;
 }

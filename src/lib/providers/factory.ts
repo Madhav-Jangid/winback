@@ -31,11 +31,20 @@ export function getCampaignPlanner(): CampaignPlanner {
   return selectPlanner(getServerEnv()).planner;
 }
 
-export function getTranslator(): Translator {
-  const apiKey = getServerEnv().SARVAM_API_KEY;
+export interface TranslatorSelection {
+  translator: Translator;
+  /** True when a real Sarvam key is configured. */
+  live: boolean;
+}
+
+/** Sarvam when a key is configured, otherwise the labelled demo translator (SA-04, E-22). */
+export function selectTranslator(
+  env: Pick<ServerEnv, 'SARVAM_API_KEY' | 'SARVAM_MODEL'>,
+  fetchImpl?: typeof fetch,
+): TranslatorSelection {
+  const apiKey = env.SARVAM_API_KEY?.trim();
   if (apiKey) {
-    return new SarvamTranslator(apiKey);
+    return { translator: new SarvamTranslator({ apiKey, model: env.SARVAM_MODEL, fetchImpl }), live: true };
   }
-  console.warn('[Providers] SARVAM_API_KEY not set — using demo fallback translator.');
-  return new DemoTranslator();
+  return { translator: new DemoTranslator('SARVAM_API_KEY is not configured, so no real translation was done.'), live: false };
 }

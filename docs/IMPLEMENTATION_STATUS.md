@@ -4,7 +4,56 @@ Updated: 2026-10-31
 
 ## Current phase
 
-**Phase 5 — Gemini planner and fallback: complete (gate passed).** Next up: Phase 6.
+**Phase 6 — Sarvam localization: complete (gate passed).** Next up: Phase 7.
+
+## Phase 6 — Sarvam localization
+
+### Decisions
+
+- **Direct REST calls**, like Phase 5. The request matches Sarvam's reference exactly (`input`, `source_language_code: en-IN`, `target_language_code`, `model`, `mode: formal`, `numerals_format: international`; key in `api-subscription-key`). It is the same call the `sarvamai` SDK makes; no dependency was added. `international` numerals keep offer digits verifiable (`native` would turn ₹45,000 into ४५,०००).
+- **Models:** default `mayura:v1` (1000 characters), `SARVAM_MODEL` can select `sarvam-translate:v1` (2000). If the text exceeds the configured model's limit the larger model is used and recorded with the translation; over 2000 is rejected. All 11 campaign languages (English + 10) are supported by both models; one test asserts every `LANGUAGES` code has a Sarvam code.
+- **The demo fallback does not translate.** Arbitrary text cannot be translated without a model, and canned sentences would not match the merchant's message or offer (the old demo translator returned an unrelated hard-coded Hindi sentence with a `{name}` placeholder). It returns the English text labelled `demo_fallback`, and unreviewed demo text blocks approval (`TRANSLATION_NEEDS_REVIEW`) until the merchant edits and saves it.
+- **Provenance** is stored in `campaigns.translation_meta` (migration 003): source, model, language, the exact English text it was made from, edited flag, warnings, fallback reason. `translation_source` mirrors the source.
+- **Stale detection** (`translationState`): a translation is trusted only while the English text and language match what it was made from. Changing either makes it `stale` and blocks approval. Saving the translated text confirms it against the current English (editing counts as review).
+- **E-16 number check:** offer numbers must survive translation. Machine output that loses or invents numbers is saved, flagged, and blocks approval until edited and saved; native-script digits (Devanagari, Bengali, Gurmukhi, Gujarati, Odia, Tamil, Telugu, Kannada, Malayalam) are normalized.
+- **Versioning:** a translation, and any edit of the localized text, is a material change: version bump, approval invalidated and audited. A save fails with `VERSION_CONFLICT` if the campaign changed while the provider was working.
+- **No duplicate work:** with a current translation, a plain request returns it (`cached: true`) without calling Sarvam; replacing it needs `force: true`, and the UI asks first because it would discard edits.
+- **Failure never substitutes text:** `502 TRANSLATION_FAILED` with `retry_available` and `fallback_available`; nothing is saved, the English is untouched. Provider messages and keys are never echoed; Sarvam error codes map to fixed hints.
+
+### Acceptance criteria
+
+- [x] Sarvam adapter behind the `Translator` interface; language and model configuration verified against current docs.
+- [x] Side-by-side editor with provider badge, character counter, offer terms shown unchanged, retry, and labelled demo draft.
+- [x] Localized text persisted against the campaign version; cannot bypass approval (stale/review/missing block readiness).
+- [x] SA-01 to SA-05 pass, plus mocked timeout, HTTP-error, unsupported-language and too-long cases.
+
+### Files
+
+- New: `supabase/migrations/003_translation.sql`, `src/lib/localization/{rules,types,validate,service}.ts` (+ tests), `src/lib/providers/sarvam/languages.ts`, `src/lib/providers/sarvam/translator.test.ts`, `src/lib/providers/demo/translator.ts`, `src/components/campaigns/TranslationPanel.tsx`, `src/app/api/campaigns/[id]/translate/route.test.ts`, `src/test/integration/translation.test.ts`
+- Rewritten: `src/lib/providers/sarvam/translator.ts`, `src/app/api/campaigns/[id]/translate/route.ts`, `src/lib/campaigns/readiness.ts`, `src/lib/repositories/campaigns.ts`
+- Changed: `src/lib/campaigns/{schema,state,service,rules}.ts` (`localized_message` as a material field, `applyTranslation`, `translation_state`), `src/lib/providers/{factory,interfaces,demo/index}.ts`, `src/lib/env.ts` (`SARVAM_MODEL`), `src/types/index.ts`, campaign builder and pages, shared test fixtures, `.env.example`, `README.md`
+
+### Verification (2026-10-31)
+
+| Command | Result |
+|---|---|
+| `npm test` | PASS — 25 files, 266 tests (adapter tests use a fake `fetch`; 51 database integration tests on Supabase; the full run now takes about 5 minutes because of the remote database) |
+| `npm run lint` / `typecheck` / `build` | PASS (0 errors, 0 warnings) |
+| `npm run db:migrate` | Applied `003_translation.sql` to Supabase |
+| **Real Sarvam calls** (`mayura:v1`, your key; English message and language only) | PASS — Hindi in 6 s and Tamil after switching language; "14 days" preserved in both; no warnings. A repeat request was served from the saved copy (`cached: true`, no second call). Switching language marked the old translation stale (`status` back to `draft`); a bad body returned `400 VALIDATION_ERROR` |
+| Headless Edge screenshot | Side-by-side panel renders with the Sarvam badge, model, and offer terms |
+
+Not exercised against the real API: timeouts, HTTP 4xx/5xx, quota errors (covered with a fake `fetch` only).
+
+### Known issues
+
+- The buttons in the translation panel (translate, replace confirmation, retry, demo draft) were not clicked through in a browser; the API and the rendered panel were verified.
+- Sarvam's `formal` mode produced a fairly colloquial Tamil sentence ("மிஸ் பண்ணறோம்"). The merchant reviews every translation; tone modes are not exposed in the UI.
+- `numerals_format` is fixed to `international`; native numerals are not offered.
+- Translation needs a saved campaign; unsaved edits must be saved first.
+- `effectiveMessage()` (what customers actually receive) exists but is not used until sending is rewritten.
+
+## Phase 5 — Gemini planner and fallback (complete)
 
 ## Phase 5 — Gemini planner and fallback
 
@@ -235,7 +284,7 @@ Tests covered: DM-01, DM-02, DM-03, FK/check/unique constraints, RLS, failed-res
 
 ## Next task
 
-Phase 6 — Sarvam localization: verify supported languages and model names against current Sarvam docs, rewrite the Sarvam adapter and `api/campaigns/[id]/translate` (side-by-side editor, editable translation saved against the campaign version, retry, labelled provider, no silent fallback), tests SA-01 to SA-05. Follow the Phase 5 patterns: direct `fetch` with timeout and key in a header, validation, `PlannerError`-style safe errors, audit and provider_operations. Remember `localized_message` edits are material (invalidate approval) and the language list must match `LANGUAGES` in `src/lib/campaigns/rules.ts`.
+Phase 7 — Consent, eligibility, and approval: an approval summary screen (segment and treatment/control counts, offer and budget, English and localized copy with provider badges, channel, suppression counts by reason, cost assumptions, "Simulation only"); `POST /api/campaigns/:id/approve` rewritten on the campaign service to bind approval to the exact version (and a hash of every material field including `localized_message` and its provenance), require an empty readiness list, recompute eligibility server-side, and audit it; the same eligibility service reused by the send path. Tests EL-01 to EL-10 and CA-01 to CA-08. Use `effectiveMessage()` for what customers receive. The old `approve` and `simulate-send` routes are still the original rough versions.
 
 ## Phase overview
 
@@ -247,4 +296,5 @@ Phase 6 — Sarvam localization: verify supported languages and model names agai
 | 3 — Customers and risk detection | Complete |
 | 4 — Campaign draft and validation | Complete |
 | 5 — Gemini planner and fallback | Complete |
+| 6 — Sarvam localization | Complete |
 | 3–11 | Not started / existing artifacts unverified |

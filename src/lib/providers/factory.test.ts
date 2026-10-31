@@ -3,7 +3,9 @@ import { validatePlan, contextFromInput } from '@/lib/planner/validate';
 import { makePlanInput } from '@/test/fixtures/plan-input';
 import { DemoCampaignPlanner } from './demo/planner';
 import { GeminiCampaignPlanner } from './gemini/planner';
-import { selectPlanner } from './factory';
+import { DemoTranslator } from './demo/translator';
+import { SarvamTranslator } from './sarvam/translator';
+import { selectPlanner, selectTranslator } from './factory';
 
 describe('planner selection', () => {
   it.each([[undefined], [''], ['   ']])('AI-05: missing key (%j) selects the labelled demo planner', async (key) => {
@@ -20,6 +22,24 @@ describe('planner selection', () => {
     const selection = selectPlanner({ GEMINI_API_KEY: 'k', GEMINI_MODEL: 'gemini-3.8-flash' });
     expect(selection.live).toBe(true);
     expect(selection.planner).toBeInstanceOf(GeminiCampaignPlanner);
+  });
+});
+
+describe('translator selection', () => {
+  it.each([[undefined], [''], ['   ']])('SA-04: missing key (%j) selects the demo translator, labelled as demo output', async (key) => {
+    const selection = selectTranslator({ SARVAM_API_KEY: key, SARVAM_MODEL: undefined });
+    expect(selection.live).toBe(false);
+    expect(selection.translator).toBeInstanceOf(DemoTranslator);
+    const result = await selection.translator.translate({ text: 'We miss you!', target_language: 'hi' });
+    // It does not pretend to translate: same text, never labelled as Sarvam.
+    expect(result).toMatchObject({ translated_text: 'We miss you!', source: 'demo_fallback', model: null });
+    expect(result.fallback_reason).toMatch(/SARVAM_API_KEY is not configured/);
+  });
+
+  it('selects Sarvam when a key is configured', () => {
+    const selection = selectTranslator({ SARVAM_API_KEY: 'k', SARVAM_MODEL: 'sarvam-translate:v1' });
+    expect(selection.live).toBe(true);
+    expect(selection.translator).toBeInstanceOf(SarvamTranslator);
   });
 });
 

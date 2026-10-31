@@ -33,6 +33,10 @@ export const LANGUAGES = [
 ] as const;
 export const LANGUAGE_CODES = LANGUAGES.map((l) => l.code) as [string, ...string[]];
 
+export function languageLabel(code: string): string {
+  return LANGUAGES.find((l) => l.code === code)?.name ?? code.toUpperCase();
+}
+
 export const LIMITS = {
   percentMin: 1,
   percentMax: 50,

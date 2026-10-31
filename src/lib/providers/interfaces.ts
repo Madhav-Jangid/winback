@@ -3,7 +3,7 @@
  */
 
 import type { CampaignPlanInput, CampaignPlanResult } from '@/lib/planner/types';
-import { TranslationInput, TranslationResult } from '@/types';
+import type { TranslationInput, TranslationResult } from '@/lib/localization/types';
 
 export interface CampaignPlanner {
   generatePlan(input: CampaignPlanInput): Promise<CampaignPlanResult>;

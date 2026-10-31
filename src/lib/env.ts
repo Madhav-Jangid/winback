@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { SARVAM_MODELS } from '@/lib/providers/sarvam/languages';
 
 const serverEnvSchema = z.object({
   DATABASE_URL: z.preprocess(
@@ -18,6 +19,7 @@ const serverEnvSchema = z.object({
     z.string().regex(/^[a-z0-9][a-z0-9.-]{1,60}$/, 'GEMINI_MODEL must be a model id such as gemini-3.5-flash-lite').optional(),
   ),
   SARVAM_API_KEY: z.string().optional(),
+  SARVAM_MODEL: z.preprocess((value) => value === '' ? undefined : value, z.enum(SARVAM_MODELS).optional()),
   DEMO_MODE: z.enum(['true', 'false']).default('true'),
   DEMO_SEED: z.string().trim().min(1).default('winback-demo-v1'),
 });

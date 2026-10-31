@@ -14,7 +14,9 @@ interface PlanPanelProps {
 
 const SOURCE_BADGE: Record<string, { label: string; className: string }> = {
   gemini: { label: 'Gemini', className: 'provider-gemini' },
+  sarvam: { label: 'Sarvam', className: 'provider-sarvam' },
   demo_fallback: { label: 'Demo fallback', className: 'provider-demo' },
+  manual: { label: 'Manual', className: 'badge-muted' },
 };
 
 export function SourceBadge({ source }: { source: string }) {

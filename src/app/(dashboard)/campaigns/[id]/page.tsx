@@ -59,8 +59,9 @@ async function CampaignEditor({ params }: { params: Params }) {
         initial={{
           name: c.name, goal: c.goal, segment_type: c.segment_type, offer: c.offer, budget_minor: c.budget_minor,
           frequency_cap: c.frequency_cap, cooldown_days: c.cooldown_days, language: c.language, channel: c.channel,
-          original_message: c.original_message,
+          original_message: c.original_message, localized_message: c.localized_message,
         }}
+        translation={c.translation}
       />
     </>
   );

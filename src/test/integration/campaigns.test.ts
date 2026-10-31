@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { cancelCampaign, createCampaign, getCampaignView, listCampaigns, updateCampaign } from '@/lib/campaigns/service';
 import { DEMO_MERCHANT_ID, DEMO_REFERENCE_DATE } from '@/lib/demo/constants';
 import { resetDemoData } from '@/lib/demo/seed';
-import { VALID_DRAFT } from '@/test/fixtures/campaign';
+import { VALID_DRAFT, VALID_LOCALIZED } from '@/test/fixtures/campaign';
 import { createTestDatabase, TEST_DATABASE_URL, type TestDatabase } from '@/test/helpers/test-db';
 
 const NOW = DEMO_REFERENCE_DATE;
@@ -97,7 +97,9 @@ describe.skipIf(!TEST_DATABASE_URL)('campaign drafts (integration)', () => {
     const cosmetic = await updateCampaign(t.db, M, campaign.id, { goal: 'A clearer goal', expected_version: 1 }, NOW, 'test');
     expect(cosmetic.campaign).toMatchObject({ status: 'approved', approved_version: 1, version: 1 });
 
-    const material = await updateCampaign(t.db, M, campaign.id, { original_message: 'New copy, 10% off (up to ₹100).', expected_version: 1 }, NOW, 'test');
+    const material = await updateCampaign(t.db, M, campaign.id, {
+      original_message: 'New copy, 10% off (up to ₹100).', localized_message: `${VALID_LOCALIZED} (नया)`, expected_version: 1,
+    }, NOW, 'test');
     expect(material.campaign).toMatchObject({ status: 'ready_for_approval', approved_version: null, approved_by: null, approved_at: null, version: 2 });
     expect((await auditEvents(campaign.id)).map((e) => e.event_type)).toContain('approval_invalidated');
   });

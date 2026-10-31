@@ -167,20 +167,6 @@ export interface RiskResult {
 // Providers
 // ============================================================
 
-export interface TranslationInput {
-  text: string;
-  source_language: string;
-  target_language: string;
-}
-
-export interface TranslationResult {
-  original: string;
-  translated: string;
-  source: ProviderSource;
-  status: 'success' | 'failed' | 'fallback';
-  error?: string;
-}
-
 // ============================================================
 // API Response shapes
 // ============================================================

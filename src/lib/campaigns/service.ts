@@ -18,6 +18,7 @@ import {
   type CampaignRecord,
 } from '@/lib/repositories/campaigns';
 import type { CampaignStatus } from '@/types';
+import { translationAfterSave, translationState, type TranslationMeta, type TranslationState } from '@/lib/localization/rules';
 import { checkReadiness, type ReadinessIssue } from './readiness';
 import { describeOffer, offerCostPerRedemptionMinor } from './rules';
 import { campaignDraftSchema, campaignUpdateSchema, fieldErrors, type CampaignDraft } from './schema';
@@ -29,6 +30,7 @@ export interface CampaignView {
   preview: SegmentPreview;
   readiness: ReadinessIssue[];
   editable: boolean;
+  translation_state: TranslationState;
   offer_summary: string;
   cost_per_redemption_minor: number | null;
   currency: string;
@@ -60,7 +62,7 @@ export async function previewSegmentFor(
 const toDraft = (c: CampaignRecord): CampaignDraft => ({
   name: c.name, goal: c.goal, segment_type: c.segment_type, offer: c.offer, budget_minor: c.budget_minor,
   frequency_cap: c.frequency_cap, cooldown_days: c.cooldown_days, language: c.language, channel: c.channel,
-  original_message: c.original_message,
+  original_message: c.original_message, localized_message: c.localized_message,
 });
 
 function snapshotOf(draft: CampaignDraft, preview: SegmentPreview, now: Date) {
@@ -70,23 +72,27 @@ function snapshotOf(draft: CampaignDraft, preview: SegmentPreview, now: Date) {
   return { segment_type: draft.segment_type, previewed_at: now.toISOString(), preview: counts };
 }
 
-async function evaluate(db: Queryable, merchantId: string, now: Date, draft: CampaignDraft, campaignId?: string) {
+async function evaluate(
+  db: Queryable, merchantId: string, now: Date, draft: CampaignDraft, campaignId: string | undefined,
+  translation: TranslationMeta | null,
+) {
   const { preview, currency } = await previewSegmentFor(
     db, merchantId, now, draft.segment_type,
     { cooldown_days: draft.cooldown_days, frequency_cap: draft.frequency_cap }, campaignId,
   );
-  return { preview, currency, readiness: checkReadiness(draft, preview, currency) };
+  return { preview, currency, readiness: checkReadiness({ ...draft, translation }, preview, currency) };
 }
 
 export async function getCampaignView(db: Queryable, merchantId: string, id: string, now: Date): Promise<CampaignView> {
   const campaign = await getCampaign(db, merchantId, id);
   if (!campaign) throw notFound('Campaign');
-  const { preview, currency, readiness } = await evaluate(db, merchantId, now, toDraft(campaign), campaign.id);
+  const { preview, currency, readiness } = await evaluate(db, merchantId, now, toDraft(campaign), campaign.id, campaign.translation);
   return {
     campaign,
     preview,
     readiness,
     editable: isEditable(campaign.status),
+    translation_state: translationState(campaign, campaign.translation),
     offer_summary: describeOffer(campaign.offer, currency),
     cost_per_redemption_minor: offerCostPerRedemptionMinor(campaign.offer, preview.avg_order_value_minor),
     currency,
@@ -98,11 +104,12 @@ export async function createCampaign(
   db: Queryable, merchantId: string, input: unknown, now: Date, actorId: string,
 ): Promise<CampaignView> {
   const draft = parseOrThrow(campaignDraftSchema, input);
-  const { preview, readiness } = await evaluate(db, merchantId, now, draft);
+  const translation = translationAfterSave(null, '', draft, now);
+  const { preview, readiness } = await evaluate(db, merchantId, now, draft, undefined, translation);
   const status: CampaignStatus = readiness.length === 0 ? 'ready_for_approval' : 'draft';
 
   const id = await inTransaction(db, async () => {
-    const newId = await insertCampaign(db, merchantId, { ...draft, segment_snapshot: snapshotOf(draft, preview, now), status });
+    const newId = await insertCampaign(db, merchantId, { ...draft, translation, segment_snapshot: snapshotOf(draft, preview, now), status });
     await writeAuditEvent({
       merchant_id: merchantId, campaign_id: newId, actor_id: actorId, event_type: 'campaign_created',
       entity_type: 'campaign', entity_id: newId,
@@ -135,13 +142,15 @@ export async function updateCampaign(
     if (fields.length === 0) return;
 
     const material = isMaterialChange(fields);
-    const { preview, readiness } = await evaluate(db, merchantId, now, after, id);
+    // Editing the localized text by hand counts as reviewing it against the current English message.
+    const translation = translationAfterSave(current.translation, before.localized_message, after, now);
+    const { preview, readiness } = await evaluate(db, merchantId, now, after, id, translation);
     const status = statusAfterSave(current.status, material, readiness.length === 0);
     const version = material ? current.version + 1 : current.version;
     const clearApproval = material && current.approved_version !== null;
 
     await updateCampaignRow(db, merchantId, id, {
-      ...after, segment_snapshot: snapshotOf(after, preview, now), status, version, clear_approval: clearApproval,
+      ...after, translation, segment_snapshot: snapshotOf(after, preview, now), status, version, clear_approval: clearApproval,
     });
     await writeAuditEvent({
       merchant_id: merchantId, campaign_id: id, actor_id: actorId, event_type: 'campaign_updated',
@@ -155,6 +164,57 @@ export async function updateCampaign(
         metadata: { approved_version: current.approved_version, new_version: version, changed_fields: fields },
       }, db);
     }
+  });
+  return getCampaignView(db, merchantId, id, now);
+}
+
+/**
+ * Save a provider translation as a new campaign version. A translation changes what customers
+ * receive, so it invalidates any approval like any other material edit. Nothing is saved if the
+ * campaign changed while the provider was working.
+ * `inTransaction` lets the caller write related rows (provider operation) atomically.
+ */
+export async function applyTranslation(
+  db: Queryable, merchantId: string, id: string,
+  input: { expected_version: number; text: string; meta: TranslationMeta; inTransaction?: () => Promise<void> },
+  now: Date, actorId: string,
+): Promise<CampaignView> {
+  await inTransaction(db, async () => {
+    const current = await getCampaign(db, merchantId, id, { forUpdate: true });
+    if (!current) throw notFound('Campaign');
+    if (!isEditable(current.status)) {
+      throw new AppError('CAMPAIGN_LOCKED', `A ${current.status} campaign can no longer be edited. Create a new campaign instead.`, 409);
+    }
+    if (current.version !== input.expected_version) {
+      throw new AppError('VERSION_CONFLICT', 'The campaign changed while it was being translated. Nothing was saved; translate again.', 409,
+        { current_version: current.version, expected_version: input.expected_version });
+    }
+
+    const after = parseOrThrow(campaignDraftSchema, { ...toDraft(current), localized_message: input.text });
+    const { preview, readiness } = await evaluate(db, merchantId, now, after, id, input.meta);
+    const status = statusAfterSave(current.status, true, readiness.length === 0);
+    const version = current.version + 1;
+    const clearApproval = current.approved_version !== null;
+
+    await updateCampaignRow(db, merchantId, id, {
+      ...after, translation: input.meta, segment_snapshot: snapshotOf(after, preview, now), status, version, clear_approval: clearApproval,
+    });
+    await writeAuditEvent({
+      merchant_id: merchantId, campaign_id: id, actor_id: actorId, event_type: 'translation_completed',
+      entity_type: 'campaign', entity_id: id,
+      metadata: {
+        source: input.meta.source, model: input.meta.model, language: input.meta.language, warnings: input.meta.warnings.length,
+        version_from: current.version, version_to: version, status_from: current.status, status_to: status,
+      },
+    }, db);
+    if (clearApproval) {
+      await writeAuditEvent({
+        merchant_id: merchantId, campaign_id: id, actor_id: actorId, event_type: 'approval_invalidated',
+        entity_type: 'campaign', entity_id: id,
+        metadata: { approved_version: current.approved_version, new_version: version, changed_fields: ['localized_message'] },
+      }, db);
+    }
+    await input.inTransaction?.();
   });
   return getCampaignView(db, merchantId, id, now);
 }

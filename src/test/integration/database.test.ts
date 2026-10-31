@@ -64,7 +64,7 @@ describe.skipIf(!DATABASE_URL)('database (integration)', () => {
 
   it('records migrations and does not reapply them', async () => {
     const applied = await db.query<{ name: string }>('SELECT name FROM schema_migrations ORDER BY name');
-    expect(applied.rows.map((r) => r.name)).toEqual(['001_schema.sql', '002_rls_and_constraints.sql']);
+    expect(applied.rows.map((r) => r.name)).toEqual(['001_schema.sql', '002_rls_and_constraints.sql', '003_translation.sql']);
     expect(await runMigrations(db)).toEqual([]);
   });
 

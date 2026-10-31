@@ -5,21 +5,14 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Client, DatabaseError } from 'pg';
-import { buildPgConfig, RESET_SESSION_SQL } from '@/lib/db/config';
+import { buildPgConfig } from '@/lib/db/config';
 import { runMigrations } from '@/lib/db/migrate';
+import type { Queryable } from '@/lib/db/types';
 import { DEMO_MERCHANT_ID, DEMO_REFERENCE_DATE } from '@/lib/demo/constants';
 import { resetDemoData } from '@/lib/demo/seed';
 import { buildDemoDataset, DEMO_CUSTOMERS } from '@/lib/demo/seed-data';
 import { getDashboardStats } from '@/lib/repositories/dashboard';
-
-if (!process.env.DATABASE_URL) {
-  try {
-    process.loadEnvFile('.env.local');
-  } catch {
-    // No .env.local: the suite is skipped below.
-  }
-}
-const DATABASE_URL = process.env.DATABASE_URL;
+import { createTestDatabase, TEST_DATABASE_URL as DATABASE_URL, type TestDatabase } from '@/test/helpers/test-db';
 
 const TABLES = [
   'merchants', 'customers', 'purchases', 'campaigns', 'campaign_recipients',
@@ -36,8 +29,9 @@ async function pgErrorCode(promise: Promise<unknown>): Promise<string | undefine
 }
 
 describe.skipIf(!DATABASE_URL)('database (integration)', () => {
-  const schema = `winback_test_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
-  let db: Client;
+  let t: TestDatabase;
+  let db: Queryable;
+  let schema: string;
 
   const counts = async () => {
     const result = await db.query<Record<string, string>>(
@@ -47,33 +41,22 @@ describe.skipIf(!DATABASE_URL)('database (integration)', () => {
   };
 
   beforeAll(async () => {
-    db = new Client(buildPgConfig(DATABASE_URL!));
-    await db.connect();
-    await db.query(`CREATE SCHEMA ${schema}`);
-    await db.query(`SET search_path TO ${schema}`);
-    await runMigrations(db);
+    t = await createTestDatabase();
+    db = t.db;
+    schema = t.schema;
   });
 
-  afterAll(async () => {
-    if (!db) return;
-    try {
-      await db.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
-    } finally {
-      // The Supabase pooler hands this session to the next client, so never leave the temp
-      // schema on the search path (it broke the dev server once).
-      await db.query('RESET search_path');
-      await db.end();
-    }
-  });
+  afterAll(async () => t?.cleanup());
 
-  it('leaves new connections on the default search_path', async () => {
-    // Regression: a fresh connection must not inherit this test's temp schema.
+  it('does not leak the temp schema into other connections', async () => {
+    // Regression: tests once SET search_path at session level and the pooler handed that
+    // session to the dev server ("relation merchants does not exist").
+    await db.query('SELECT 1');
     const other = new Client(buildPgConfig(DATABASE_URL!));
     await other.connect();
     try {
-      await other.query(RESET_SESSION_SQL);
-      const result = await other.query<{ t: string | null }>(`SELECT to_regclass('merchants')::text AS t`);
-      expect(result.rows[0].t).not.toContain(schema);
+      const result = await other.query<{ sp: string }>(`SELECT current_setting('search_path') AS sp`);
+      expect(result.rows[0].sp).not.toContain('winback_test_');
     } finally {
       await other.end();
     }
@@ -185,13 +168,18 @@ describe.skipIf(!DATABASE_URL)('database (integration)', () => {
 
   it('DM-03: dashboard KPIs come from persisted rows', async () => {
     await resetDemoData(db, 'test');
-    const expectedAtRisk = DEMO_CUSTOMERS.filter((c) => c.expectedRisk === 'at_risk' && c.optedOutDaysAgo === undefined).length;
+    const atRisk = DEMO_CUSTOMERS.filter((c) => c.expectedRisk === 'at_risk');
+    const expectedAtRisk = atRisk.length;
+    const expectedContactable = atRisk.filter(
+      (c) => c.consent === 'consented' && c.optedOutDaysAgo === undefined && c.messagedDaysAgo === undefined,
+    ).length;
 
     const stats = await getDashboardStats(db, DEMO_MERCHANT_ID, DEMO_REFERENCE_DATE, true);
     expect(stats).toMatchObject({
       merchant_name: 'Chai & Conversations Café',
       total_customers: DEMO_CUSTOMERS.length,
       at_risk_customers: expectedAtRisk,
+      at_risk_contactable: expectedContactable,
       draft_campaigns: 0,
       completed_campaigns: 0,
       total_simulated_reactivations: 0,

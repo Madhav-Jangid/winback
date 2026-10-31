@@ -28,6 +28,8 @@ Use the **Session pooler** URI from the Supabase dashboard (Connect → Session 
 The direct `db.<project-ref>.supabase.co` host is IPv6-only and fails on most home networks with `ENOTFOUND`.
 Connections to Supabase use SSL without certificate verification (MVP limitation).
 
+The pooler behaves like transaction mode: concurrent connections can share one server session. Never rely on session state (`SET`, temp tables, named prepared statements); use transactions instead.
+
 The app talks to Postgres only from the server. Row-level security is enabled on every table with no policies, so Supabase's REST API (and the publishable key) cannot read or write app data.
 
 ### Database commands

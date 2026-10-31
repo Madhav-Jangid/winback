@@ -20,7 +20,7 @@ export interface DemoCustomerScenario {
   optedOutDaysAgo?: number;
   purchases: Array<{ daysAgo: number; status?: PurchaseStatus }>;
   /** Status the risk engine must produce at the reference date (verified by a unit test). */
-  expectedRisk: Exclude<RiskStatus, 'opted_out'>;
+  expectedRisk: RiskStatus;
   /** Days before the reference date this customer was messaged by the historical campaign. */
   messagedDaysAgo?: number;
   scenario: string;

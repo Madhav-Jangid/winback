@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 interface DashboardData {
   total_customers: number;
   at_risk_customers: number;
+  at_risk_contactable: number;
   draft_campaigns: number;
   completed_campaigns: number;
   total_simulated_reactivations: number;
@@ -187,7 +188,7 @@ export default function DashboardPage() {
                 <span className="kpi-icon">⚠️</span>
                 <div className="kpi-label">At-Risk Customers</div>
                 <div className="kpi-value" style={{ color: 'var(--danger)' }}>{data.at_risk_customers}</div>
-                <div className="kpi-sub">Eligible for winback</div>
+                <div className="kpi-sub">{data.at_risk_contactable} can be contacted now</div>
               </div>
             </Link>
             <Link href="/campaigns?status=draft" style={{ textDecoration: 'none' }}>

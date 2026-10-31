@@ -1,11 +1,12 @@
+import { getCustomerDirectory } from '@/lib/customers/service';
 import type { Queryable } from '@/lib/db/types';
-import { batchAssessRisk } from '@/lib/risk/engine';
-import { listCustomersWithPurchases } from './customers';
 
 export interface DashboardStatsResult {
   merchant_name: string | null;
   total_customers: number;
   at_risk_customers: number;
+  /** At-risk customers who can be messaged right now (consented, not opted out, not frequency-capped). */
+  at_risk_contactable: number;
   draft_campaigns: number;
   completed_campaigns: number;
   total_simulated_reactivations: number;
@@ -22,12 +23,9 @@ export async function getDashboardStats(
   now: Date,
   isDemo: boolean,
 ): Promise<DashboardStatsResult> {
-  const merchant = await db.query<{ name: string }>('SELECT name FROM merchants WHERE id = $1', [merchantId]);
-  const customers = await listCustomersWithPurchases(db, merchantId);
-
-  // Same rule as the customer list: opted-out customers are shown as opted out, not at risk.
-  const risks = batchAssessRisk(customers.filter((c) => !c.opted_out_at), { now });
-  const atRisk = risks.filter((r) => r.status === 'at_risk').length;
+  // Same computation as the customer list, so the two screens always agree.
+  const directory = await getCustomerDirectory(db, merchantId, now);
+  const atRisk = directory.all.filter((p) => p.risk.status === 'at_risk');
 
   const statusRows = await db.query<{ status: string; count: string }>(
     'SELECT status, COUNT(*) AS count FROM campaigns WHERE merchant_id = $1 GROUP BY status',
@@ -50,9 +48,10 @@ export async function getDashboardStats(
   );
 
   return {
-    merchant_name: merchant.rows[0]?.name ?? null,
-    total_customers: customers.length,
-    at_risk_customers: atRisk,
+    merchant_name: directory.merchant?.name ?? null,
+    total_customers: directory.all.length,
+    at_risk_customers: atRisk.length,
+    at_risk_contactable: atRisk.filter((p) => p.contact.eligible).length,
     draft_campaigns: (byStatus.draft ?? 0) + (byStatus.planning ?? 0) + (byStatus.ready_for_approval ?? 0),
     completed_campaigns: byStatus.completed ?? 0,
     total_simulated_reactivations: Number(outcomes.rows[0]?.count ?? 0),

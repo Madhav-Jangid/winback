@@ -1,42 +1,26 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { query } from '@/lib/db/pool';
-import { assessRisk } from '@/lib/risk/engine';
+import { connection, NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { getAppNow } from '@/lib/clock';
+import { getCustomerDetail } from '@/lib/customers/service';
+import { getPool } from '@/lib/db/pool';
+import { DEMO_MERCHANT_ID } from '@/lib/demo/constants';
 
+const notFound = () =>
+  NextResponse.json({ error: { code: 'NOT_FOUND', message: 'Customer not found.' } }, { status: 404 });
+
+/** GET /api/customers/:id — purchase history, risk explanation, and contact status. */
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  await connection();
   const { id } = await params;
+  if (!z.string().uuid().safeParse(id).success) return notFound();
+
   try {
-    const customerRes = await query(
-      `SELECT * FROM customers WHERE id = $1`,
-      [id],
-    );
-    if (customerRes.rows.length === 0) {
-      return NextResponse.json({ error: { code: 'NOT_FOUND', message: 'Customer not found.' } }, { status: 404 });
-    }
-
-    const customer = customerRes.rows[0] as Record<string, unknown>;
-
-    const purchasesRes = await query(
-      `SELECT * FROM purchases WHERE customer_id = $1 ORDER BY occurred_at DESC`,
-      [id],
-    );
-
-    const completedPurchases = purchasesRes.rows.filter((p: Record<string, unknown>) => p.status === 'completed') as { occurred_at: string }[];
-    const risk = assessRisk(id, completedPurchases);
-
-    if (customer.opted_out_at) {
-      risk.status = 'opted_out';
-      risk.reason = 'Customer has opted out of marketing communications.';
-    }
-
-    return NextResponse.json({
-      ...customer,
-      purchases: purchasesRes.rows,
-      risk,
-    });
+    const detail = await getCustomerDetail(getPool(), DEMO_MERCHANT_ID, id, getAppNow());
+    return detail ? NextResponse.json(detail) : notFound();
   } catch (err) {
-    console.error('[Customer Detail API]', err);
+    console.error('[Customer Detail API]', err instanceof Error ? err.message : err);
     return NextResponse.json(
-      { error: { code: 'DATABASE_ERROR', message: 'Failed to load customer.' } },
+      { error: { code: 'DATABASE_ERROR', message: 'Failed to load customer. Check the database connection.' } },
       { status: 503 },
     );
   }

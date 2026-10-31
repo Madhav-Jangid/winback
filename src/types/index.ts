@@ -155,7 +155,8 @@ export interface AuditEvent {
 // Risk / Eligibility
 // ============================================================
 
-export type RiskStatus = 'at_risk' | 'healthy' | 'insufficient_history' | 'opted_out';
+/** Purchase-rhythm status only. Consent and opt-out are tracked separately (see customers/service). */
+export type RiskStatus = 'at_risk' | 'healthy' | 'insufficient_history';
 
 export interface RiskResult {
   customer_id: string;

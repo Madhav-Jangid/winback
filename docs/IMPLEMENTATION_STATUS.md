@@ -4,7 +4,52 @@ Updated: 2026-10-31
 
 ## Current phase
 
-**Phase 2 — Database and seeded demo dataset: complete (gate passed).** Next up: Phase 3. The repository already contains pieces from later phases, which are preserved; their end-to-end completeness has not been audited yet.
+**Phase 3 — Customers and risk detection: complete (gate passed).** Next up: Phase 4.
+
+## Phase 3 — Customers and risk detection
+
+### Decisions
+
+- **Risk and contactability are separate.** Risk status is purely purchase rhythm (`at_risk`, `healthy`, `insufficient_history`); `opted_out` was removed from `RiskStatus`. Whether a customer may be messaged comes from the existing eligibility service using the merchant's default frequency policy, with the same reason codes the send path will use (`CONSENT_UNKNOWN`, `OPTED_OUT`, `FREQUENCY_CAP`). An opted-out customer can be lapsing, and the UI now shows both.
+- **Dashboard at-risk KPI** now counts every lapsing customer (19 in the seed) and shows how many can be contacted now (12). Previously it excluded opted-out customers silently.
+- **Frequency caps use persisted campaign messages across all campaigns** (E-26); failed simulated sends don't count.
+- **Pages are server components** that read through the service layer directly, wrapped in `<Suspense>` as Cache Components requires. Search is a `next/form` GET form; filters are links.
+- **Supabase pooler behaves like transaction mode.** Concurrent connections were observed sharing one server session (same backend PID, shared `search_path`). The app relies on no session state, and transactions are safe. Integration tests now scope their schema with `SET LOCAL` inside per-statement transactions (`src/test/helpers/test-db.ts`).
+
+### Acceptance criteria
+
+- [x] Customer list with search and filters: at risk, healthy, not enough history, consented, opted out, no consent, recently messaged (frequency-capped).
+- [x] Customer detail with purchase history (refunds/cancellations marked ignored), cadence, threshold, reason, contact status, reason code, simulated message history.
+- [x] Every displayed classification is reproducible: unit tests check each seed scenario's expected status, and an integration test checks the same through the database.
+- [x] RD-01 to RD-08 pass.
+- [x] Customer API: validated input (typed 400), merchant-scoped lookups, 404 for malformed or unknown ids, 503 without leaking DB errors.
+
+### Files
+
+- New: `src/lib/customers/service.ts` (+ test), `src/lib/repositories/merchants.ts`, `src/lib/format.ts`, `src/components/customers/badges.tsx`, `src/components/ui/PageStates.tsx`, `src/components/ui/SidebarNav.tsx`, `src/app/(dashboard)/customers/page.tsx`, `src/app/(dashboard)/customers/[id]/page.tsx`, `src/lib/risk/engine.test.ts`, `src/app/api/customers/route.test.ts`, `src/test/helpers/test-db.ts`, `src/test/integration/customers.test.ts`
+- Changed: `src/lib/repositories/customers.ts` (single-customer lookup, message stats), `src/lib/repositories/dashboard.ts`, both customer API routes (rewritten), `src/components/ui/Sidebar.tsx` (active link in Suspense), `src/lib/eligibility/service.ts` (locale-independent date), `src/types/index.ts`, dashboard page, `src/test/integration/database.test.ts`, `src/lib/db/config.ts` (pooler note)
+
+### Verification (2026-10-31)
+
+| Command | Result |
+|---|---|
+| `npm test` | PASS — 7 files, 53 tests (17 database integration tests on Supabase) |
+| `npm run lint` | PASS — 0 errors, 2 warnings (later-phase files) |
+| `npm run typecheck` | PASS |
+| `npm run build` | PASS — `/customers` and `/customers/[id]` partially prerendered |
+| `next start` + `/customers` | 200, 31 rows; chips: All 31, At risk 19, Healthy 10, Not enough history 2, Consented 26, Opted out 2, No consent 3, Recently messaged 2 |
+| `?filter=frequency_capped` / `?search=nair` / `?filter=bogus` | Karan + Divya / Deepa + Ganesh / falls back to all 31 |
+| `/customers/<Harish>` and `/customers/<Karan>` | reason, threshold, refund marked ignored / `FREQUENCY_CAP` + historical message |
+| `/api/customers?filter=bogus` | 400 `VALIDATION_ERROR` |
+| `/api/dashboard` | at_risk 19, contactable 12 |
+| Pooler session check after tests | all sessions on default `search_path` |
+
+### Known issues
+
+- An unknown customer URL renders the not-found page with HTTP 200, because the page streams and the status is sent before the lookup. The API returns a real 404.
+- Dates use the merchant time zone for display; cadence uses exact elapsed time (fractional days), not calendar days.
+
+## Phase 2 — Database and seeded demo dataset (complete) The repository already contains pieces from later phases, which are preserved; their end-to-end completeness has not been audited yet.
 
 ## Phase 2 — Database and seeded demo dataset
 
@@ -90,7 +135,7 @@ Tests covered: DM-01, DM-02, DM-03, FK/check/unique constraints, RLS, failed-res
 
 ## Next task
 
-Phase 3 — Customers and risk detection: customer list and detail UI, purchase history, risk reasons, filters (including frequency-capped), RD-01 to RD-08 tests, and customer API tests. Move the customer routes onto `src/lib/repositories/customers.ts`.
+Phase 4 — Campaign draft and validation: campaign builder, segment preview with exclusion counts (reuse `getCustomerDirectory` profiles and reason codes), offer configuration, budget/frequency settings, state machine. Tests: schema validation, bounds, invalid transitions, empty segment.
 
 ## Phase overview
 
@@ -99,4 +144,5 @@ Phase 3 — Customers and risk detection: customer list and detail UI, purchase 
 | 0 — Repository reconnaissance and plan | Complete |
 | 1 — Skeleton and developer workflow | Complete |
 | 2 — Database and seeded demo dataset | Complete |
+| 3 — Customers and risk detection | Complete |
 | 3–11 | Not started / existing artifacts unverified |

@@ -44,7 +44,7 @@ export function checkEligibility(
 
   // 3. Opt-out check
   if (customer.opted_out_at) {
-    return { eligible: false, reason: 'OPTED_OUT', detail: `Customer opted out on ${new Date(customer.opted_out_at).toLocaleDateString()}.` };
+    return { eligible: false, reason: 'OPTED_OUT', detail: `Customer opted out on ${new Date(customer.opted_out_at).toISOString().slice(0, 10)}.` };
   }
 
   // 4. Frequency / cooldown check

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { Activity, AlertTriangle, ArrowRight, Check, CircleDollarSign, Megaphone, Plus, RotateCw, Search, ScrollText, Users } from 'lucide-react';
 
 interface DashboardData {
   total_customers: number;
@@ -33,9 +34,9 @@ const STATUS_LABELS: Record<string, string> = {
   sending: 'Sending…',
   sent: 'Sent',
   measuring: 'Measuring',
-  completed: '✅ Completed',
+  completed: 'Completed',
   cancelled: 'Cancelled',
-  failed: '⚠️ Failed',
+  failed: 'Failed',
 };
 
 function formatCurrency(minor: number) {
@@ -58,6 +59,7 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [resetting, setResetting] = useState(false);
   const [resetMessage, setResetMessage] = useState<string | null>(null);
+  const [resetFailed, setResetFailed] = useState(false);
 
   const loadDashboard = async () => {
     setLoading(true);
@@ -79,6 +81,7 @@ export default function DashboardPage() {
   const resetDemo = async () => {
     setResetting(true);
     setResetMessage(null);
+    setResetFailed(false);
     try {
       const res = await fetch('/api/demo/reset', { method: 'POST' });
       const json = await res.json();
@@ -86,7 +89,8 @@ export default function DashboardPage() {
       setResetMessage(json.message);
       await loadDashboard();
     } catch (e) {
-      setResetMessage(`❌ ${e instanceof Error ? e.message : 'Reset failed.'}`);
+      setResetFailed(true);
+      setResetMessage(e instanceof Error ? e.message : 'Reset failed.');
     } finally {
       setResetting(false);
     }
@@ -114,22 +118,22 @@ export default function DashboardPage() {
   return (
     <div className="fade-in">
       <div className="demo-banner">
-        <span>⚡</span>
+        <span className="demo-banner-mark" aria-hidden="true">DEMO</span>
         <span>
-          <strong>Demo Mode:</strong> All data is simulated. No real customers, purchases, or messages.{' '}
+          <strong>Demo workspace</strong> All customers and outcomes are simulated. No real messages are sent.{' '}
           <button
             onClick={resetDemo}
             disabled={resetting}
             style={{ background: 'none', border: 'none', color: 'var(--warning)', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
           >
-            {resetting ? 'Resetting…' : 'Reset demo data'}
+            {resetting && <RotateCw size={13} aria-hidden="true" />} {resetting ? 'Resetting…' : 'Reset demo data'}
           </button>
         </span>
       </div>
 
       {resetMessage && (
-        <div className={`success-box mb-4`} style={{ marginBottom: '1rem' }}>
-          <span>✅</span>
+        <div className={`${resetFailed ? 'error-box' : 'success-box'} mb-4`} style={{ marginBottom: '1rem' }} role={resetFailed ? 'alert' : 'status'}>
+          {!resetFailed && <Check size={18} aria-hidden="true" />}
           <span>{resetMessage}</span>
         </div>
       )}
@@ -149,7 +153,7 @@ export default function DashboardPage() {
           )}
         </div>
         <Link href="/campaigns/new" className="btn btn-primary">
-          ＋ New Campaign
+          <Plus size={16} aria-hidden="true" /> New campaign
         </Link>
       </div>
 
@@ -162,7 +166,7 @@ export default function DashboardPage() {
 
       {error && (
         <div className="error-box" style={{ marginBottom: '1.5rem' }}>
-          <span>⚠️</span>
+          <AlertTriangle size={18} aria-hidden="true" />
           <div>
             <strong>Database connection error</strong>
             <p style={{ marginTop: '0.25rem', fontSize: '0.8rem' }}>{error}</p>
@@ -177,7 +181,7 @@ export default function DashboardPage() {
           <div className="kpi-grid" style={{ marginBottom: '1.5rem' }}>
             <Link href="/customers" style={{ textDecoration: 'none' }}>
               <div className="kpi-card">
-                <span className="kpi-icon">👥</span>
+                <span className="kpi-icon"><Users size={20} aria-hidden="true" /></span>
                 <div className="kpi-label">Total Customers</div>
                 <div className="kpi-value">{data.total_customers.toLocaleString()}</div>
                 <div className="kpi-sub">In demo dataset</div>
@@ -185,7 +189,7 @@ export default function DashboardPage() {
             </Link>
             <Link href="/customers?filter=at_risk" style={{ textDecoration: 'none' }}>
               <div className="kpi-card">
-                <span className="kpi-icon">⚠️</span>
+                <span className="kpi-icon"><AlertTriangle size={20} aria-hidden="true" /></span>
                 <div className="kpi-label">At-Risk Customers</div>
                 <div className="kpi-value" style={{ color: 'var(--danger)' }}>{data.at_risk_customers}</div>
                 <div className="kpi-sub">{data.at_risk_contactable} can be contacted now</div>
@@ -193,26 +197,26 @@ export default function DashboardPage() {
             </Link>
             <Link href="/campaigns?status=open" style={{ textDecoration: 'none' }}>
               <div className="kpi-card">
-                <span className="kpi-icon">📝</span>
+                <span className="kpi-icon"><Megaphone size={20} aria-hidden="true" /></span>
                 <div className="kpi-label">Active Campaigns</div>
                 <div className="kpi-value" style={{ color: 'var(--warning)' }}>{data.draft_campaigns}</div>
                 <div className="kpi-sub">Draft / pending approval</div>
               </div>
             </Link>
             <div className="kpi-card">
-              <span className="kpi-icon">🏆</span>
+              <span className="kpi-icon"><Check size={20} aria-hidden="true" /></span>
               <div className="kpi-label">Completed Campaigns</div>
               <div className="kpi-value" style={{ color: 'var(--success)' }}>{data.completed_campaigns}</div>
               <div className="kpi-sub">With results</div>
             </div>
             <div className="kpi-card">
-              <span className="kpi-icon">🔄</span>
-              <div className="kpi-label">Simulated Reactivations</div>
+              <span className="kpi-icon"><Activity size={20} aria-hidden="true" /></span>
+              <div className="kpi-label">Treatment reactivations</div>
               <div className="kpi-value" style={{ color: 'var(--accent)' }}>{data.total_simulated_reactivations}</div>
               <div className="kpi-sub">Demo estimate</div>
             </div>
             <div className="kpi-card">
-              <span className="kpi-icon">💰</span>
+              <span className="kpi-icon"><CircleDollarSign size={20} aria-hidden="true" /></span>
               <div className="kpi-label">Est. Incremental Revenue</div>
               <div className="kpi-value" style={{ color: 'var(--success)', fontSize: '1.5rem' }}>
                 {formatCurrency(data.total_estimated_revenue_minor)}
@@ -228,13 +232,13 @@ export default function DashboardPage() {
             </h2>
             <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
               <Link href="/customers?filter=at_risk" className="btn btn-secondary">
-                🔍 Find at-risk customers
+                <Search size={16} aria-hidden="true" /> Find at-risk customers
               </Link>
               <Link href="/campaigns/new" className="btn btn-primary">
-                ＋ Create winback campaign
+                <Plus size={16} aria-hidden="true" /> Create winback campaign
               </Link>
               <Link href="/audit" className="btn btn-secondary">
-                📋 View audit log
+                <ScrollText size={16} aria-hidden="true" /> View audit log
               </Link>
             </div>
           </div>
@@ -243,11 +247,11 @@ export default function DashboardPage() {
           <div className="card">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
               <h2 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>Recent Campaigns</h2>
-              <Link href="/campaigns" style={{ fontSize: '0.8rem', color: 'var(--accent)', textDecoration: 'none' }}>View all →</Link>
+              <Link href="/campaigns" className="text-link">View all <ArrowRight size={14} aria-hidden="true" /></Link>
             </div>
             {data.recent_campaigns.length === 0 ? (
               <div className="center-content" style={{ padding: '2rem' }}>
-                <span className="empty-icon">📣</span>
+                <span className="empty-icon"><Megaphone size={24} aria-hidden="true" /></span>
                 <p className="empty-title">No campaigns yet</p>
                 <p className="empty-desc">Create your first winback campaign to see results here.</p>
                 <Link href="/campaigns/new" className="btn btn-primary">Create Campaign</Link>
@@ -282,8 +286,8 @@ export default function DashboardPage() {
                         </td>
                         <td style={{ fontSize: '0.8rem' }}>{timeAgo(c.updated_at)}</td>
                         <td>
-                          <Link href={`/campaigns/${c.id}`} className="btn btn-sm btn-secondary" onClick={e => e.stopPropagation()}>
-                            Open →
+                          <Link href={c.status === 'completed' ? `/campaigns/${c.id}/results` : `/campaigns/${c.id}`} className="btn btn-sm btn-secondary" onClick={e => e.stopPropagation()}>
+                            {c.status === 'completed' ? 'Results' : 'Open'} <ArrowRight size={14} aria-hidden="true" />
                           </Link>
                         </td>
                       </tr>

@@ -219,6 +219,9 @@ export interface CampaignResults {
   estimated_incremental_revenue_minor: number | null;
   campaign_cost_minor: number;
   cost_per_reactivated_minor: number | null;
+  unsubscribe_count: number;
+  unsubscribe_denominator: number;
   unsubscribe_rate: number | null;
+  average_order_value_minor: number;
   is_simulated: true;
 }

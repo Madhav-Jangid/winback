@@ -7,6 +7,7 @@
  */
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { ArrowRight } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SendProgress } from '@/lib/messaging/progress';
 import { SUPPRESSION_LABELS } from '@/lib/eligibility/reasons';
@@ -258,7 +259,7 @@ export default function SendProgressPanel({ campaignId, initial, refreshInterval
             className="btn btn-primary"
             id="btn-view-results"
           >
-            View results →
+            View results <ArrowRight size={15} aria-hidden="true" />
           </Link>
         )}
         <Link href={`/campaigns/${campaignId}/review`} className="btn btn-secondary" id="btn-back-to-review">

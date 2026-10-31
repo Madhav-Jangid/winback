@@ -39,11 +39,28 @@ export async function getDashboardStats(
     [merchantId],
   );
 
-  // TODO(Phase 9): replace with treatment-minus-control incremental revenue from the metrics module.
   const outcomes = await db.query<{ count: string; revenue: string }>(
-    `SELECT COUNT(*) AS count, COALESCE(SUM(co.revenue_minor), 0) AS revenue
-       FROM campaign_outcomes co JOIN campaigns c ON c.id = co.campaign_id
-      WHERE c.merchant_id = $1 AND co.reactivated AND co.group_assignment = 'treatment'`,
+    `WITH outcome_groups AS (
+       SELECT campaign_id,
+              COUNT(*) FILTER (WHERE group_assignment = 'treatment') AS treatment_count,
+              COUNT(*) FILTER (WHERE group_assignment = 'control') AS control_count,
+              COUNT(*) FILTER (WHERE group_assignment = 'treatment' AND reactivated) AS treatment_reactivations,
+              COUNT(*) FILTER (WHERE group_assignment = 'control' AND reactivated) AS control_reactivations
+         FROM campaign_outcomes
+        GROUP BY campaign_id
+     )
+     SELECT COALESCE(SUM(o.treatment_reactivations), 0) AS count,
+            COALESCE(SUM(
+              CASE WHEN o.treatment_count > 0 AND o.control_count > 0 THEN
+                ((o.treatment_reactivations::numeric / o.treatment_count) -
+                 (o.control_reactivations::numeric / o.control_count)) *
+                o.treatment_count *
+                COALESCE(NULLIF(c.results_meta->>'average_order_value_minor', '')::numeric, 25000)
+              ELSE 0 END
+            ), 0) AS revenue
+       FROM campaigns c
+       LEFT JOIN outcome_groups o ON o.campaign_id = c.id
+      WHERE c.merchant_id = $1 AND c.status = 'completed'`,
     [merchantId],
   );
 

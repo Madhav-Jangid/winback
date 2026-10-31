@@ -1,46 +1,17 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { query } from '@/lib/db/pool';
-import { calculateResults } from '@/lib/metrics/calculator';
-
+import { connection, NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { getPool } from '@/lib/db/pool';
 import { DEMO_MERCHANT_ID } from '@/lib/demo/constants';
+import { errorJson, errorResponse } from '@/lib/http';
+import { getCampaignResults } from '@/lib/metrics/service';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  await connection();
   const { id } = await params;
+  if (!z.string().uuid().safeParse(id).success) return errorJson('NOT_FOUND', 'Campaign not found.', 404);
   try {
-    const campaignRes = await query(`SELECT * FROM campaigns WHERE id = $1 AND merchant_id = $2`, [id, DEMO_MERCHANT_ID]);
-    if (campaignRes.rows.length === 0) {
-      return NextResponse.json({ error: { code: 'NOT_FOUND', message: 'Campaign not found.' } }, { status: 404 });
-    }
-
-    const campaign = campaignRes.rows[0] as Record<string, unknown>;
-
-    if (!['measuring', 'completed'].includes(campaign.status as string)) {
-      return NextResponse.json(
-        { error: { code: 'NO_RESULTS', message: 'Results are not yet available. Run "Simulate Outcomes" first.' } },
-        { status: 409 },
-      );
-    }
-
-    const outcomesRes = await query<{ group_assignment: string; reactivated: boolean; revenue_minor: number }>(
-      `SELECT group_assignment, reactivated, revenue_minor FROM campaign_outcomes WHERE campaign_id = $1`,
-      [id],
-    );
-
-    const messagesRes = await query<{ status: string }>(
-      `SELECT status FROM campaign_messages WHERE campaign_id = $1`,
-      [id],
-    );
-
-    const results = calculateResults(
-      id,
-      outcomesRes.rows.map((o) => ({ ...o, group_assignment: o.group_assignment as 'treatment' | 'control' })),
-      messagesRes.rows,
-      campaign.budget_minor as number,
-    );
-
-    return NextResponse.json({ ...results, campaign_name: campaign.name, campaign_status: campaign.status });
-  } catch (err) {
-    console.error('[Results API]', err);
-    return NextResponse.json({ error: { code: 'DATABASE_ERROR', message: 'Failed to load results.' } }, { status: 503 });
+    return NextResponse.json(await getCampaignResults(getPool(), DEMO_MERCHANT_ID, id));
+  } catch (error) {
+    return errorResponse(error, 'Campaign results');
   }
 }

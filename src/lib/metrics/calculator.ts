@@ -1,85 +1,64 @@
-/**
- * Winback AI — Metrics Calculator
- * Formulas are fully documented and transparent.
- */
+import type { CampaignResults } from '@/types';
 
-import { CampaignResults } from '@/types';
-
-interface OutcomeRow {
+export interface OutcomeRow {
+  customer_id: string;
   group_assignment: 'treatment' | 'control';
   reactivated: boolean;
   revenue_minor: number;
+  unsubscribed: boolean;
 }
 
-interface MessageRow {
-  status: string;
+export interface MessageRow {
+  customer_id: string;
+  status: 'queued' | 'delivered' | 'failed';
+  simulated_cost_minor: number;
 }
 
 export function safeRate(numerator: number, denominator: number): number | null {
-  if (denominator === 0) return null;
-  return numerator / denominator;
+  return denominator > 0 ? numerator / denominator : null;
 }
 
-/**
- * Calculate full campaign results metrics.
- * Never divides by zero; returns null for undefined rates.
- */
+/** Reconcile persisted outcome and message rows into campaign-level, explicitly simulated metrics. */
 export function calculateResults(
   campaignId: string,
-  outcomes: OutcomeRow[],
-  messages: MessageRow[],
-  campaignBudgetMinor: number,
-  averageOrderValueMinor: number = 25000, // ₹250 default
+  outcomes: readonly OutcomeRow[],
+  messages: readonly MessageRow[],
+  averageOrderValueMinor: number,
 ): CampaignResults {
-  const treatment = outcomes.filter((o) => o.group_assignment === 'treatment');
-  const control = outcomes.filter((o) => o.group_assignment === 'control');
-
-  const treatmentCount = treatment.length;
-  const controlCount = control.length;
-
-  const treatmentReactivations = treatment.filter((o) => o.reactivated).length;
-  const controlReactivations = control.filter((o) => o.reactivated).length;
-
-  const treatmentRate = safeRate(treatmentReactivations, treatmentCount);
-  const controlRate = safeRate(controlReactivations, controlCount);
-
-  const incrementalRate =
-    treatmentRate !== null && controlRate !== null ? treatmentRate - controlRate : null;
-
-  const estimatedIncrementalReactivations =
-    incrementalRate !== null ? incrementalRate * treatmentCount : null;
-
-  const estimatedIncrementalRevenue =
-    estimatedIncrementalReactivations !== null
-      ? estimatedIncrementalReactivations * averageOrderValueMinor
-      : null;
-
-  const deliveredMessages = messages.filter((m) => m.status === 'delivered').length;
-  const campaignCost = deliveredMessages * 500; // ₹5 per simulated message
-
-  const costPerReactivated =
-    treatmentReactivations > 0
-      ? Math.round((campaignBudgetMinor + campaignCost) / treatmentReactivations)
-      : null;
-
-  const failedMessages = messages.filter((m) => m.status === 'failed').length;
-  const unsubscribeRate = safeRate(failedMessages, deliveredMessages + failedMessages);
+  const treatment = outcomes.filter((outcome) => outcome.group_assignment === 'treatment');
+  const control = outcomes.filter((outcome) => outcome.group_assignment === 'control');
+  const treatmentReactivations = treatment.filter((outcome) => outcome.reactivated).length;
+  const controlReactivations = control.filter((outcome) => outcome.reactivated).length;
+  const treatmentRate = safeRate(treatmentReactivations, treatment.length);
+  const controlRate = safeRate(controlReactivations, control.length);
+  const incrementalRate = treatmentRate !== null && controlRate !== null ? treatmentRate - controlRate : null;
+  const incrementalReactivations = incrementalRate === null ? null : incrementalRate * treatment.length;
+  const delivered = messages.filter((message) => message.status === 'delivered');
+  const failed = messages.filter((message) => message.status === 'failed');
+  const campaignCost = delivered.reduce((sum, message) => sum + message.simulated_cost_minor, 0);
+  const unsubscribeCount = outcomes.filter((outcome) => outcome.unsubscribed).length;
 
   return {
     campaign_id: campaignId,
-    treatment_count: treatmentCount,
-    control_count: controlCount,
+    treatment_count: treatment.length,
+    control_count: control.length,
     treatment_reactivations: treatmentReactivations,
     control_reactivations: controlReactivations,
     treatment_reactivation_rate: treatmentRate,
     control_reactivation_rate: controlRate,
     incremental_reactivation_rate: incrementalRate,
-    estimated_incremental_reactivations: estimatedIncrementalReactivations,
-    estimated_incremental_revenue_minor:
-      estimatedIncrementalRevenue !== null ? Math.round(estimatedIncrementalRevenue) : null,
+    estimated_incremental_reactivations: incrementalReactivations,
+    estimated_incremental_revenue_minor: incrementalReactivations === null
+      ? null
+      : Math.round(incrementalReactivations * averageOrderValueMinor),
     campaign_cost_minor: campaignCost,
-    cost_per_reactivated_minor: costPerReactivated,
-    unsubscribe_rate: unsubscribeRate,
+    cost_per_reactivated_minor: treatmentReactivations === 0
+      ? null
+      : Math.round(campaignCost / treatmentReactivations),
+    unsubscribe_count: unsubscribeCount,
+    unsubscribe_denominator: delivered.length + failed.length,
+    unsubscribe_rate: safeRate(unsubscribeCount, delivered.length + failed.length),
+    average_order_value_minor: averageOrderValueMinor,
     is_simulated: true,
   };
 }

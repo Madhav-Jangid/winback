@@ -4,7 +4,59 @@ Updated: 2026-10-31
 
 ## Current phase
 
-**Phase 4 — Campaign draft and validation: complete (gate passed).** Next up: Phase 5.
+**Phase 5 — Gemini planner and fallback: complete (gate passed).** Next up: Phase 6.
+
+## Phase 5 — Gemini planner and fallback
+
+### Decisions
+
+- **Direct REST calls, no SDK.** The Gemini docs now mark `@google/generative-ai` deprecated (since 2025-11-30) and its replacement's call shapes could not be confirmed from the docs, so the adapter uses `fetch` against `generativelanguage.googleapis.com/v1beta` with the key in an `x-goog-api-key` header. `@google/generative-ai` was uninstalled. The old default `gemini-1.5-flash` is no longer listed; the default is **`gemini-3.5-flash-lite`** (docs checked 2026-10-31), configurable via `GEMINI_MODEL`.
+- **The planner only suggests.** `POST /api/campaigns/:id/plan` changes nothing on the campaign except `plan_source` and `plan_rationale`. The merchant applies the message (and optionally an equal-or-cheaper offer) in the builder and saves, which is what versions it and invalidates approval. The old route's `planning`/`failed` statuses, which left campaigns stuck, are gone; `planning` is not used.
+- **Fallback rules.** No key configured: the labelled demo planner runs automatically. Provider failure (timeout, HTTP error, blocked, invalid after one retry): `502 PLAN_PROVIDER_FAILED` with `fallback_available`, campaign untouched; the merchant chooses **Use demo draft** (`{ use_demo: true }`). Never silent.
+- **Validation** (`src/lib/planner/validate.ts`): strict schema (null treated as missing, unknown top-level fields dropped, offer strict), offer type allowlist, cost per redemption ≤ budget and ≤ the configured offer's cost (E-13), message length for the channel, no placeholders/markup, no percentages or rupee amounts outside the offer, no urgency wording unless the offer has an expiry (E-16, E-30). One retry for an invalid answer, with the rejection reason given to the model (E-12).
+- **Privacy** (AI-07): input is built through a strict whitelist schema (`planInputSchema`); tests check that no demo customer name, id, email or phone-like value appears in the input or in the HTTP request body. Goal text is truncated to 200 characters. Provider operations store only a hash of the input.
+- **Errors never leak:** timeouts and HTTP failures report status only; keys and provider bodies are never included.
+
+### Acceptance criteria
+
+- [x] Provider interface with Gemini adapter, labelled demo planner, timeout handling.
+- [x] Structured output validated server-side; malformed, unsupported, over-budget and overlong output rejected.
+- [x] Works with a key and without one; fallback is labelled in the data (`source`, `fallback_reason`) and the UI.
+- [x] Builder panel: draft, source badge and model, rationale, assumptions, warnings, apply message / apply message and offer, retry and demo-draft actions.
+- [x] Planning is audited (`plan_generated`, `plan_failed`) and recorded in `provider_operations`.
+- [x] AI-01 to AI-07 pass.
+
+### Bug found and fixed (from Phase 4)
+
+Postgres JSONB reorders object keys, and offers were compared with `JSON.stringify`, so a stored free-item offer with an expiry looked different from the same offer re-parsed. A name-only edit would have bumped the version and cancelled an approval; the planner would also have reported "offer changed". Comparisons now use `src/lib/stable-json.ts`. Regression tests at unit and database level.
+
+### Files
+
+- New: `src/lib/planner/{types,input,prompt,validate,service}.ts` (+ tests), `src/lib/providers/demo/planner.ts`, `src/lib/providers/{gemini/planner,factory}.test.ts`, `src/lib/repositories/planning.ts`, `src/lib/db/transaction.ts`, `src/lib/stable-json.ts` (+ test), `src/components/campaigns/PlanPanel.tsx`, `src/app/api/campaigns/[id]/plan/route.test.ts`, `src/test/fixtures/plan-input.ts`, `src/test/integration/planner.test.ts`
+- Rewritten: `src/lib/providers/gemini/planner.ts`, `src/app/api/campaigns/[id]/plan/route.ts`
+- Changed: `src/lib/providers/{factory,interfaces,demo/index}.ts`, `src/lib/campaigns/{segments,state,service}.ts` (aggregate rhythm in preview; stable comparison), `src/lib/http.ts` (optional body), `src/lib/audit/service.ts`, `src/lib/env.ts` (`GEMINI_MODEL`), `src/types/index.ts`, `src/components/campaigns/CampaignBuilder.tsx`, campaign page, `.env.example`, `README.md`, `package.json`
+
+### Verification (2026-10-31)
+
+| Command | Result |
+|---|---|
+| `npm test` | PASS — 20 files, 202 tests (adapter tests use a fake `fetch`; 38 database integration tests on Supabase) |
+| `npm run lint` | PASS — 0 errors, 0 warnings |
+| `npm run typecheck` | PASS |
+| `npm run build` | PASS |
+| **Real Gemini call** (`gemini-3.5-flash-lite`, your key, aggregate data only) | PASS — HTTP 200 in about 11 s, valid plan, `source: gemini`, offer returned unchanged (`offer_changed: false` after the fix), message restates the 14-day expiry and nothing else |
+| `use_demo: true` / invalid body / persisted plan | `demo_fallback` with reason / 400 `VALIDATION_ERROR` / "Last plan: Gemini" shown after reload |
+| Headless Edge screenshot | Planner panel renders in the builder |
+
+Not exercised against the real API: timeouts, HTTP 4xx/5xx and blocked prompts (covered with a fake `fetch` only).
+
+### Known issues
+
+- Planning in the browser (button, apply, retry, demo draft) was not clicked through; the panel's render and the API were verified.
+- Planning needs a saved campaign; the create screen says so.
+- A live Gemini call takes about 10–20 s; the button shows "Drafting…" meanwhile.
+
+## Phase 4 — Campaign draft and validation (complete)
 
 ## Phase 4 — Campaign draft and validation
 
@@ -183,7 +235,7 @@ Tests covered: DM-01, DM-02, DM-03, FK/check/unique constraints, RLS, failed-res
 
 ## Next task
 
-Phase 5 — Gemini planner and fallback: provider interface, structured output schema validated with the Phase 4 offer schema and limits, Gemini adapter with timeout, labelled demo fallback, aggregate-only planner input (no customer PII). Tests AI-01 to AI-07. Rewrite `api/campaigns/[id]/plan` on the campaign service so plans go through `updateCampaign` (versioning, readiness, audit).
+Phase 6 — Sarvam localization: verify supported languages and model names against current Sarvam docs, rewrite the Sarvam adapter and `api/campaigns/[id]/translate` (side-by-side editor, editable translation saved against the campaign version, retry, labelled provider, no silent fallback), tests SA-01 to SA-05. Follow the Phase 5 patterns: direct `fetch` with timeout and key in a header, validation, `PlannerError`-style safe errors, audit and provider_operations. Remember `localized_message` edits are material (invalidate approval) and the language list must match `LANGUAGES` in `src/lib/campaigns/rules.ts`.
 
 ## Phase overview
 
@@ -194,4 +246,5 @@ Phase 5 — Gemini planner and fallback: provider interface, structured output s
 | 2 — Database and seeded demo dataset | Complete |
 | 3 — Customers and risk detection | Complete |
 | 4 — Campaign draft and validation | Complete |
+| 5 — Gemini planner and fallback | Complete |
 | 3–11 | Not started / existing artifacts unverified |

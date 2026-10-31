@@ -2,7 +2,8 @@
  * Winback AI — AI Provider Interfaces
  */
 
-import { CampaignPlanInput, CampaignPlanResult, TranslationInput, TranslationResult } from '@/types';
+import type { CampaignPlanInput, CampaignPlanResult } from '@/lib/planner/types';
+import { TranslationInput, TranslationResult } from '@/types';
 
 export interface CampaignPlanner {
   generatePlan(input: CampaignPlanInput): Promise<CampaignPlanResult>;

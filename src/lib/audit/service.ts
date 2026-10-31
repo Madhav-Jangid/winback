@@ -10,6 +10,7 @@ export type AuditEventType =
   | 'campaign_updated'
   | 'campaign_cancelled'
   | 'plan_generated'
+  | 'plan_failed'
   | 'translation_requested'
   | 'translation_completed'
   | 'translation_failed'

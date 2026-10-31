@@ -167,35 +167,6 @@ export interface RiskResult {
 // Providers
 // ============================================================
 
-export interface CampaignPlanInput {
-  merchant_type: string;
-  goal: string;
-  segment_summary: {
-    total_eligible: number;
-    median_cadence_days: number;
-    days_since_typical_purchase: number;
-  };
-  allowed_offer_types: OfferType[];
-  max_offer_value: number;
-  budget_minor: number;
-  channel: Channel;
-  language: string;
-  safety_constraints: string[];
-}
-
-export interface CampaignPlanResult {
-  rationale: string;
-  target_segment_description: string;
-  offer_type: OfferType;
-  offer_value: number | null;
-  offer_description: string;
-  message_draft: string;
-  experiment_duration_days: number;
-  assumptions: string[];
-  warnings: string[];
-  source: ProviderSource;
-}
-
 export interface TranslationInput {
   text: string;
   source_language: string;

@@ -15,7 +15,6 @@
     "db:setup": "npm run db:migrate && npm run db:seed"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.24.1",
     "@types/pg": "^8.23.1",
     "@types/uuid": "^10.0.0",
     "date-fns": "^4.4.0",

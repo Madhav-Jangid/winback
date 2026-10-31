@@ -5,6 +5,7 @@ import type { z } from 'zod';
  */
 import { writeAuditEvent } from '@/lib/audit/service';
 import { getCustomerDirectory, type ContactPolicy } from '@/lib/customers/service';
+import { inTransaction } from '@/lib/db/transaction';
 import type { Queryable } from '@/lib/db/types';
 import { AppError, notFound } from '@/lib/errors';
 import { assignGroup } from '@/lib/experiments/assignment';
@@ -31,18 +32,6 @@ export interface CampaignView {
   offer_summary: string;
   cost_per_redemption_minor: number | null;
   currency: string;
-}
-
-async function inTransaction<T>(db: Queryable, fn: () => Promise<T>): Promise<T> {
-  await db.query('BEGIN');
-  try {
-    const result = await fn();
-    await db.query('COMMIT');
-    return result;
-  } catch (error) {
-    await db.query('ROLLBACK');
-    throw error;
-  }
 }
 
 function parseOrThrow<S extends z.ZodType>(schema: S, input: unknown): z.output<S> {

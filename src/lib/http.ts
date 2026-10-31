@@ -21,6 +21,20 @@ export async function readJson(req: NextRequest): Promise<unknown> {
   }
 }
 
+/** Like readJson, but an empty body is treated as `{}` (for actions with optional options). */
+export async function readOptionalJson(req: NextRequest): Promise<unknown> {
+  const declared = Number(req.headers.get('content-length') ?? 0);
+  if (declared > MAX_JSON_BYTES) throw new AppError('PAYLOAD_TOO_LARGE', 'Request body is too large.', 413);
+  const text = await req.text();
+  if (!text.trim()) return {};
+  if (new TextEncoder().encode(text).length > MAX_JSON_BYTES) throw new AppError('PAYLOAD_TOO_LARGE', 'Request body is too large.', 413);
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new AppError('INVALID_JSON', 'Request body must be valid JSON.', 400);
+  }
+}
+
 /**
  * Expected failures keep their code and status; anything else is logged without details and
  * reported as a recoverable database/service error. Never returns stack traces or raw errors.

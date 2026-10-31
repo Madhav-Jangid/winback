@@ -46,6 +46,14 @@ describe('campaign state machine', () => {
     expect(changedFields(draft, { ...draft })).toEqual([]);
   });
 
+  it('regression: the same offer with keys in a different order is not a change', () => {
+    // Postgres JSONB returns keys sorted by length, so stored offers rarely match schema order.
+    const fromDb = { type: 'free_item', item_name: 'pastry', expiry_days: 14, item_cost_minor: 4000 } as const;
+    const fromSchema = { type: 'free_item', item_name: 'pastry', item_cost_minor: 4000, expiry_days: 14 } as const;
+    expect(changedFields({ ...draft, offer: fromDb }, { ...draft, offer: fromSchema })).toEqual([]);
+    expect(changedFields({ ...draft, offer: fromDb }, { ...draft, offer: { ...fromSchema, expiry_days: 7 } })).toEqual(['offer']);
+  });
+
   it('approval survives only cosmetic edits', () => {
     expect(statusAfterSave('approved', false, true)).toBe('approved');
     expect(statusAfterSave('approved', true, true)).toBe('ready_for_approval');

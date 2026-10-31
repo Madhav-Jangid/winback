@@ -42,6 +42,12 @@ The app talks to Postgres only from the server. Row-level security is enabled on
 
 The dashboard's **Reset demo data** link does the same as `db:seed`.
 
+### AI planner (Gemini)
+
+With `GEMINI_API_KEY` set, **Draft message** on a saved campaign calls Gemini (default model `gemini-3.5-flash-lite`; override with `GEMINI_MODEL`). Only aggregate facts are sent (segment counts, average visit gaps, your offer and budget rules), never customer names, ids or purchase histories. Output is validated server-side: offers must stay within limits and cost no more than your configured offer, and the copy may only state the offer's own terms (no extra percentages or amounts, placeholders, or invented urgency). The planner only suggests; you apply it in the builder and save.
+
+Without a key the app uses a clearly labelled demo template. If Gemini fails (timeout, quota, invalid answer after one retry), nothing changes and you are offered **Use demo draft instead**.
+
 ### Demo data and the demo clock
 
 The seed (`src/lib/demo/seed-data.ts`) is a fictional café with 31 synthetic customers covering at-risk, healthy, insufficient-history, opted-out, unknown/revoked consent, frequency-capped, refunded, cancelled, and duplicate-timestamp cases. Purchase dates are relative to a fixed demo date, **1 Oct 2026**, and in demo mode risk is calculated as of that date, so the demo gives the same results whenever it is run.

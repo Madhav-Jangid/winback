@@ -1,5 +1,6 @@
 /** Campaign state machine (PRD 7.2). */
 import { AppError } from '@/lib/errors';
+import { sameJson } from '@/lib/stable-json';
 import type { CampaignStatus } from '@/types';
 import type { CampaignDraft } from './schema';
 
@@ -41,7 +42,7 @@ export const MATERIAL_FIELDS = [
 
 export function changedFields(before: CampaignDraft, after: CampaignDraft): (keyof CampaignDraft)[] {
   return (Object.keys(after) as (keyof CampaignDraft)[]).filter(
-    (key) => JSON.stringify(before[key]) !== JSON.stringify(after[key]),
+    (key) => !sameJson(before[key], after[key]),
   );
 }
 

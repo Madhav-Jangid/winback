@@ -13,6 +13,10 @@ const serverEnvSchema = z.object({
   ),
   NEXT_PUBLIC_APP_NAME: z.string().trim().min(1).default('Winback AI'),
   GEMINI_API_KEY: z.string().optional(),
+  GEMINI_MODEL: z.preprocess(
+    (value) => value === '' ? undefined : value,
+    z.string().regex(/^[a-z0-9][a-z0-9.-]{1,60}$/, 'GEMINI_MODEL must be a model id such as gemini-3.5-flash-lite').optional(),
+  ),
   SARVAM_API_KEY: z.string().optional(),
   DEMO_MODE: z.enum(['true', 'false']).default('true'),
   DEMO_SEED: z.string().trim().min(1).default('winback-demo-v1'),

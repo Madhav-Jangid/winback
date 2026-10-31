@@ -12,6 +12,8 @@ import {
 import { campaignDraftSchema, fieldErrors, type CampaignDraft } from '@/lib/campaigns/schema';
 import { SEGMENT_TYPES, SEGMENTS, type SegmentPreview, type SegmentType } from '@/lib/campaigns/segments';
 import type { CampaignStatus } from '@/types';
+import type { CampaignPlanResult } from '@/lib/planner/types';
+import PlanPanel from './PlanPanel';
 
 type PreviewCounts = Omit<SegmentPreview, 'eligible_customer_ids'>;
 
@@ -38,12 +40,13 @@ const EXCLUSION_LABELS: Record<keyof SegmentPreview['excluded'], string> = {
   other: 'Other rules',
 };
 
-function toForm(d: CampaignDraft): FormState {
-  const o = d.offer;
+type OfferFields = Pick<FormState, 'offer_type' | 'percent' | 'max_discount' | 'amount' | 'item_name' | 'item_cost' | 'min_order' | 'expiry_days'>;
+
+function offerFields(o: CampaignDraft['offer']): OfferFields {
   const minOrder = o.type === 'no_offer' ? undefined : o.minimum_order_value_minor;
   const expiry = o.type === 'no_offer' ? undefined : o.expiry_days;
   return {
-    name: d.name, goal: d.goal, segment_type: d.segment_type, offer_type: o.type,
+    offer_type: o.type,
     percent: o.type === 'percentage_discount' ? String(o.percent) : '10',
     max_discount: o.type === 'percentage_discount' ? minorToRupeesInput(o.max_discount_minor) : '',
     amount: o.type === 'fixed_discount' ? minorToRupeesInput(o.amount_minor) : '',
@@ -51,6 +54,13 @@ function toForm(d: CampaignDraft): FormState {
     item_cost: o.type === 'free_item' ? minorToRupeesInput(o.item_cost_minor) : '',
     min_order: minorToRupeesInput(minOrder),
     expiry_days: expiry === undefined ? '' : String(expiry),
+  };
+}
+
+function toForm(d: CampaignDraft): FormState {
+  return {
+    ...offerFields(d.offer),
+    name: d.name, goal: d.goal, segment_type: d.segment_type,
     budget: minorToRupeesInput(d.budget_minor), frequency_cap: String(d.frequency_cap), cooldown_days: String(d.cooldown_days),
     language: d.language, channel: d.channel, original_message: d.original_message,
   };
@@ -101,6 +111,8 @@ export interface CampaignBuilderProps {
   approvedVersion?: number | null;
   editable?: boolean;
   serverReadiness?: ReadinessIssue[];
+  planSource?: string | null;
+  planRationale?: string | null;
 }
 
 export default function CampaignBuilder(props: CampaignBuilderProps) {
@@ -203,6 +215,15 @@ export default function CampaignBuilder(props: CampaignBuilderProps) {
       setSaving(false);
     }
   }
+
+  function applyPlan(plan: CampaignPlanResult, withOffer: boolean) {
+    setForm((f) => ({ ...f, original_message: plan.message_draft, ...(withOffer ? offerFields(plan.offer) : {}) }));
+    setBanner({ kind: 'success', text: `Applied the ${plan.source === 'gemini' ? 'Gemini' : 'demo'} draft${withOffer ? ' and offer' : ''} to the form. Review it, then save.` });
+  }
+  const planBlockedReason = props.mode === 'create' ? null
+    : !editable ? 'This campaign can no longer be edited.'
+    : dirty ? 'Save your changes first: the planner works from the saved campaign.'
+    : null;
 
   async function cancelCampaign() {
     setSaving(true);
@@ -355,9 +376,16 @@ export default function CampaignBuilder(props: CampaignBuilderProps) {
                 </select>
               </Field>
             </div>
-            <Field label="Message (English source)" help="The AI planner can draft this in the next phase. Keep offer terms accurate." error={err('original_message')}>
+            <PlanPanel
+              campaignId={props.campaignId}
+              blockedReason={planBlockedReason}
+              lastSource={props.planSource ?? null}
+              lastRationale={props.planRationale ?? null}
+              onApply={applyPlan}
+            />
+            <Field label="Message (English source)" help="Keep offer terms accurate: the message must match the offer above." error={err('original_message')}>
               <textarea className="form-textarea" value={form.original_message} rows={5} onChange={(e) => set('original_message', e.target.value)}
-                placeholder="Hi! We miss you at the café. Show this message for 10% off your next order." />
+                placeholder="Write the message customers will receive, or use Draft with AI above." />
             </Field>
             <div className={`char-counter ${messageLength > messageLimit ? 'over' : ''}`} aria-live="polite">
               {messageLength} / {messageLimit} characters for {CHANNEL_LABELS[form.channel]}

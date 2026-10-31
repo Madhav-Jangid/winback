@@ -1,126 +1,116 @@
 /**
- * Winback AI — Gemini Campaign Planner
+ * Gemini campaign planner (FR-06). Calls the Gemini REST API directly with fetch: the model id is
+ * configurable, a timeout is enforced, and the API key travels only in a header, so it can never
+ * appear in a URL or an error message. Output is untrusted and validated; one retry is allowed
+ * for an invalid answer (E-12). Failures throw PlannerError. The caller decides about fallback.
  */
-
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { z } from 'zod';
-import { CampaignPlanner } from '../interfaces';
-import { CampaignPlanInput, CampaignPlanResult, OfferType } from '@/types';
-import { DemoCampaignPlanner } from '../demo';
+import { buildPrompt, SYSTEM_INSTRUCTION } from '@/lib/planner/prompt';
+import { PlannerError, type CampaignPlanInput, type CampaignPlanResult } from '@/lib/planner/types';
+import { contextFromInput, validatePlan } from '@/lib/planner/validate';
+import type { CampaignPlanner } from '../interfaces';
 
-const CAMPAIGN_PLAN_SCHEMA = z.object({
-  rationale: z.string().min(10),
-  target_segment_description: z.string().min(5),
-  offer_type: z.enum(['percentage_discount', 'fixed_discount', 'free_item', 'no_offer']),
-  offer_value: z.number().nullable(),
-  offer_description: z.string().min(3),
-  message_draft: z.string().min(10).max(500),
-  experiment_duration_days: z.number().int().min(1).max(90),
-  assumptions: z.array(z.string()),
-  warnings: z.array(z.string()),
+/** Verified against ai.google.dev/gemini-api/docs/models on 2026-10-31. Override with GEMINI_MODEL. */
+export const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash-lite';
+export const GEMINI_TIMEOUT_MS = 20_000;
+const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
+const MAX_ATTEMPTS = 2; // the first answer plus at most one retry
+
+const responseSchema = z.object({
+  candidates: z.array(z.object({
+    content: z.object({ parts: z.array(z.object({ text: z.string().optional() })).optional() }).optional(),
+  })).optional(),
+  promptFeedback: z.object({ blockReason: z.string().optional() }).optional(),
 });
 
-const PROVIDER_TIMEOUT_MS = 15000;
+export interface GeminiPlannerOptions {
+  apiKey: string;
+  model?: string;
+  timeoutMs?: number;
+  /** Injectable for tests. */
+  fetchImpl?: typeof fetch;
+}
+
+/** Models sometimes wrap JSON in a code fence even when told not to. */
+function parseJson(text: string): { ok: true; value: unknown } | { ok: false } {
+  const trimmed = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  try {
+    return { ok: true, value: JSON.parse(trimmed) };
+  } catch {
+    return { ok: false };
+  }
+}
 
 export class GeminiCampaignPlanner implements CampaignPlanner {
-  private apiKey: string;
-  private fallback: DemoCampaignPlanner;
+  private readonly model: string;
+  private readonly timeoutMs: number;
+  private readonly fetchImpl: typeof fetch;
+  private readonly apiKey: string;
 
-  constructor(apiKey: string) {
-    this.apiKey = apiKey;
-    this.fallback = new DemoCampaignPlanner();
+  constructor(options: GeminiPlannerOptions) {
+    this.apiKey = options.apiKey;
+    this.model = options.model ?? DEFAULT_GEMINI_MODEL;
+    this.timeoutMs = options.timeoutMs ?? GEMINI_TIMEOUT_MS;
+    this.fetchImpl = options.fetchImpl ?? fetch;
   }
 
   async generatePlan(input: CampaignPlanInput): Promise<CampaignPlanResult> {
-    const prompt = this.buildPrompt(input);
+    const ctx = contextFromInput(input);
+    let feedback: string | null = null;
 
-    try {
-      const genAI = new GoogleGenerativeAI(this.apiKey);
-      const model = genAI.getGenerativeModel({
-        model: 'gemini-1.5-flash',
-        generationConfig: { responseMimeType: 'application/json' },
-      });
-
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), PROVIDER_TIMEOUT_MS);
-
-      let rawText: string;
-      try {
-        const result = await model.generateContent(prompt);
-        rawText = result.response.text();
-      } finally {
-        clearTimeout(timeout);
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      const text = await this.request(buildPrompt(input, feedback));
+      const json = parseJson(text);
+      if (!json.ok) {
+        feedback = 'the response was not valid JSON';
+        continue;
       }
-
-      const parsed = JSON.parse(rawText);
-      const validated = CAMPAIGN_PLAN_SCHEMA.parse(parsed);
-
-      // Validate offer type is allowed
-      if (!input.allowed_offer_types.includes(validated.offer_type as OfferType)) {
-        throw new Error(`Gemini suggested disallowed offer type: ${validated.offer_type}`);
+      const result = validatePlan(json.value, ctx);
+      if (result.ok) {
+        return { ...result.plan, source: 'gemini', model: this.model, fallback_reason: null };
       }
-
-      // Validate offer value within bounds
-      if (validated.offer_type === 'percentage_discount' && validated.offer_value !== null) {
-        if (validated.offer_value > 50) {
-          throw new Error(`Gemini suggested ${validated.offer_value}% discount exceeding 50% max.`);
-        }
-      }
-
-      return {
-        ...validated,
-        offer_type: validated.offer_type as OfferType,
-        source: 'gemini',
-      };
-    } catch (err) {
-      console.error('[Gemini] Plan generation failed:', err instanceof Error ? err.message : err);
-      // Return labelled fallback
-      const fallbackResult = await this.fallback.generatePlan(input);
-      return {
-        ...fallbackResult,
-        warnings: [
-          `⚠️ Gemini unavailable: ${err instanceof Error ? err.message : 'Unknown error'}. Using demo fallback.`,
-          ...fallbackResult.warnings,
-        ],
-      };
+      feedback = result.reason;
     }
+    throw new PlannerError('PLANNER_INVALID_RESPONSE', `Gemini did not return a usable plan (${feedback}).`);
   }
 
-  private buildPrompt(input: CampaignPlanInput): string {
-    return `You are a campaign planning assistant for a small business. Generate a winback campaign plan.
+  /** One HTTP call. Returns the model's text, or throws a PlannerError with a safe message. */
+  private async request(prompt: string): Promise<string> {
+    let response: Response;
+    try {
+      response = await this.fetchImpl(`${ENDPOINT}/${encodeURIComponent(this.model)}:generateContent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': this.apiKey },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: { responseMimeType: 'application/json', temperature: 0.4, maxOutputTokens: 2048 },
+        }),
+        signal: AbortSignal.timeout(this.timeoutMs),
+      });
+    } catch (error) {
+      const name = error instanceof Error ? error.name : '';
+      if (name === 'TimeoutError' || name === 'AbortError') {
+        throw new PlannerError('PLANNER_TIMEOUT', `Gemini did not respond within ${Math.max(1, Math.round(this.timeoutMs / 1000))} seconds.`);
+      }
+      throw new PlannerError('PLANNER_NETWORK_ERROR', 'Could not reach Gemini. Check the network connection.');
+    }
 
-Return ONLY valid JSON matching this schema exactly:
-{
-  "rationale": string (explain why this campaign makes sense),
-  "target_segment_description": string,
-  "offer_type": one of ${JSON.stringify(input.allowed_offer_types)},
-  "offer_value": number or null,
-  "offer_description": string (human-readable offer description),
-  "message_draft": string (max 300 chars, use {name} placeholder for customer name),
-  "experiment_duration_days": number (1-90),
-  "assumptions": string[],
-  "warnings": string[]
-}
+    if (!response.ok) {
+      // Status only: provider error bodies can echo request details.
+      const hint = response.status === 429 ? ' (rate limit or quota)' : response.status === 401 || response.status === 403 ? ' (check GEMINI_API_KEY)' : '';
+      throw new PlannerError('PLANNER_HTTP_ERROR', `Gemini returned HTTP ${response.status}${hint}.`);
+    }
 
-Context:
-- Business type: ${input.merchant_type}
-- Campaign goal: ${input.goal}
-- Customers in segment: ${input.segment_summary.total_eligible}
-- Typical purchase cadence: ${Math.round(input.segment_summary.median_cadence_days)} days
-- Avg days overdue: ${Math.round(input.segment_summary.days_since_typical_purchase)}
-- Campaign budget: ₹${(input.budget_minor / 100).toFixed(2)}
-- Channel: ${input.channel}
-- Language: ${input.language}
-- Allowed offer types: ${input.allowed_offer_types.join(', ')}
-- Max offer value: ${input.max_offer_value}
-- Safety constraints: ${input.safety_constraints.join('; ')}
-
-Rules:
-- Choose ONLY from the allowed offer types listed above
-- Keep message_draft under 300 characters
-- percentage_discount must not exceed 50%
-- fixed_discount must not exceed budget per customer
-- Do not include real customer names or PII
-- Be honest about limitations`;
+    let body: z.infer<typeof responseSchema>;
+    try {
+      body = responseSchema.parse(await response.json());
+    } catch {
+      throw new PlannerError('PLANNER_INVALID_RESPONSE', 'Gemini returned an unreadable response.');
+    }
+    if (body.promptFeedback?.blockReason) {
+      throw new PlannerError('PLANNER_BLOCKED', 'Gemini declined to answer this request.');
+    }
+    return (body.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? '').join('');
   }
 }

@@ -61,6 +61,18 @@ describe.skipIf(!TEST_DATABASE_URL)('campaign drafts (integration)', () => {
     expect(events[2].metadata).toMatchObject({ changed_fields: ['budget_minor'], material: true, version_from: 1, version_to: 2 });
   });
 
+  it('regression: renaming a free-item offer with an expiry does not count as an offer change', async () => {
+    const { campaign } = await create({ offer: { type: 'free_item', item_name: 'pastry', item_cost_minor: 4_000, expiry_days: 14 } });
+    await t.db.query(
+      `UPDATE campaigns SET status = 'approved', approved_version = 1, approved_by = 'demo-merchant', approved_at = NOW() WHERE id = $1`,
+      [campaign.id],
+    );
+    const renamed = await updateCampaign(t.db, M, campaign.id, { name: 'Just a new name', expected_version: 1 }, NOW, 'test');
+    expect(renamed.campaign).toMatchObject({ name: 'Just a new name', version: 1, status: 'approved', approved_version: 1 });
+    const update = (await auditEvents(campaign.id)).find((e) => e.event_type === 'campaign_updated')!;
+    expect(update.metadata).toMatchObject({ changed_fields: ['name'], material: false });
+  });
+
   it('a save with no changes writes nothing', async () => {
     const { campaign } = await create();
     const same = await updateCampaign(t.db, M, campaign.id, { budget_minor: VALID_DRAFT.budget_minor, expected_version: 1 }, NOW, 'test');

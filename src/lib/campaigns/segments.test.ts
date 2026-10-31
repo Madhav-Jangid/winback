@@ -51,6 +51,13 @@ describe('segment preview', () => {
     expect(p).toMatchObject({ eligible: 0, treatment: 0, control: 0, eligible_customer_ids: [], avg_order_value_minor: null });
   });
 
+  it('reports aggregate rhythm for planning, without identifying anyone', () => {
+    const p = previewSegment(profiles, 'at_risk');
+    expect(p.avg_cadence_days).toBeGreaterThan(0);
+    expect(p.avg_days_since_purchase).toBeGreaterThan(p.avg_cadence_days!);
+    expect(previewSegment([], 'at_risk')).toMatchObject({ avg_cadence_days: null, avg_days_since_purchase: null });
+  });
+
   it('average order value comes from eligible customers\' completed purchases', () => {
     const p = previewSegment(profiles, 'at_risk');
     expect(Number.isInteger(p.avg_order_value_minor)).toBe(true);

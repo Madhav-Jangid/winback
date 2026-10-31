@@ -60,6 +60,9 @@ export interface SegmentPreview {
   control_is_estimate: boolean;
   /** Average completed order value of eligible customers (minor units), for cost estimates. */
   avg_order_value_minor: number | null;
+  /** Averages over eligible customers with a measurable rhythm, in whole days. Aggregate only. */
+  avg_cadence_days: number | null;
+  avg_days_since_purchase: number | null;
   eligible_customer_ids: string[];
 }
 
@@ -103,6 +106,10 @@ export function previewSegment(
   const control = assign
     ? eligible.filter((p) => assign(p.id) === 'control').length
     : Math.round(eligible.length * CONTROL_SHARE);
+  const average = (values: Array<number | null>): number | null => {
+    const present = values.filter((v): v is number => v !== null);
+    return present.length === 0 ? null : Math.round(present.reduce((a, b) => a + b, 0) / present.length);
+  };
   const orders = eligible.reduce((n, p) => n + p.completed_purchase_count, 0);
   const spend = eligible.reduce((n, p) => n + p.total_spend_minor, 0);
 
@@ -117,6 +124,8 @@ export function previewSegment(
     treatment: eligible.length - control,
     control_is_estimate: !assign,
     avg_order_value_minor: orders > 0 ? Math.round(spend / orders) : null,
+    avg_cadence_days: average(eligible.map((p) => p.risk.median_cadence_days)),
+    avg_days_since_purchase: average(eligible.map((p) => p.risk.days_since_last_purchase)),
     eligible_customer_ids: eligible.map((p) => p.id),
   };
 }

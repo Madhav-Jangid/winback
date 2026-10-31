@@ -53,6 +53,8 @@ async function CampaignEditor({ params }: { params: Params }) {
         approvedVersion={c.approved_version}
         editable={view.editable}
         serverReadiness={view.readiness}
+        planSource={c.plan_source}
+        planRationale={c.plan_rationale}
         currency={view.currency}
         initial={{
           name: c.name, goal: c.goal, segment_type: c.segment_type, offer: c.offer, budget_minor: c.budget_minor,
